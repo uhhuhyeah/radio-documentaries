@@ -4,12 +4,47 @@ In this repo we will research, edit, and produce LLM-powered "radio documentarie
 
 ## SUB/WAVE
 
-Insert here intro into what SUB/WAVE is, how it works/how I've set it up (Navidrome, OpenRouter, ElevenLabs etc).
+**Canon:** vault note `SUBWAVE AI Radio` (what it is / how to reach it) + `SUBWAVE AI Radio - Dev Log` (dev history). Config-as-code lives in `~/code/homelab/subwave-config`. Keep this section a summary; the vault is the source of truth.
+
+SUB/WAVE is David's personal AI-DJ internet radio station, self-hosted on the Brookgrass homelab (Proxmox host `pve01`, LXC **107**, Docker Compose). One Icecast stream, one broadcast — every listener hears the same thing at once. An LLM "DJ brain" picks tracks from the music library, sequences them by mood, and talks between songs (weather, anniversaries, deep cuts) via text-to-speech in a chosen **persona** voice.
+
+How the pieces fit — the same building blocks this repo reuses for documentaries:
+
+| Piece | What it does | Detail |
+| --- | --- | --- |
+| **Navidrome** | Music library + streaming backend | Self-hosted music server, LXC **106**, `http://192.168.1.110:4533`, Subsonic API. ~845 tracks / 43 artists, mood-tagged. This is where documentary reference tracks come from and where finished episodes are published as playlists. See `## Navidrome` below. |
+| **OpenRouter** | The LLM "DJ brain" | Drives track-picking and between-song patter. Current model `qwen/qwen3-235b-a22b-2507` (chosen for reliable structured-output emission). *Not directly used by the documentary pipeline — our research/writing agents run on their own models — but it's the same station intelligence.* |
+| **ElevenLabs** | Per-persona cloud TTS (the voices) | Every persona speaks through an ElevenLabs voice. Restricted key **"SUBWAVE"** on David's account, model **Flash v2.5** (`eleven_flash_v2_5`), ≈0.5 credits/char (a typical DJ line ≈100–150 credits). **This is the exact mechanism the documentary pipeline uses to voice each script segment.** See `## ElevenLabs` below. |
+| **OpenAI** | Fallback TTS + embeddings | Global cloud-TTS fallback (`gpt-4o-mini-tts`/nova) and mood-tagging embeddings (`text-embedding-3-small`). Not used by the documentary pipeline. |
+
+Persona identity, voice, and behaviour are runtime config in the station's `settings.json`, synced live (no restart) through the admin API via `subwave-config` (`pull.sh` / `push.sh`). **The persona bios and voice IDs below are lifted from that live config** — treat `subwave-config/config/settings.json` as the authority if they ever drift.
 
 
 ## SUB/WAVE Personas
 
-Insert into here Persona BIOs and ElevenLabs voice IDs.
+The station runs four personas (Cara, Rupert, Jools, Sophie). **The "Making Of" documentaries are hosted by two of them: Cara and Jools.** Each persona's on-air identity is a compact `soul` prompt (≤400 chars) plus tone dials; the Script Writer Agent must write in the assigned host's voice, and the audio is rendered through that host's ElevenLabs voice ID at the specified speed.
+
+Voice-ID note: the values below are the live ElevenLabs voice IDs from `subwave-config`. All persona TTS uses `engine: cloud`, `cloudProvider: elevenlabs`, model **Flash v2.5**. Verify against `subwave-config/config/settings.json` before a production run — voices have been swapped before.
+
+### Cara — the pop host
+
+- **ElevenLabs voice ID:** `ZF6FPAbjXT4488VcRRnw` (ElevenLabs voice "Amelia") · **speed 1.1** · engine `cloud`/`elevenlabs`
+- **Tagline:** *"Non-stop pop, darling. The party never ends, it just changes postcode."*
+- **Tone dials** (0–10): humour **8**, localColour **5**, warmth **6** — ironic wit.
+- **Soul:** bubbly British it-girl hosting a non-stop pop party; flirty, gossipy, a little chaotic; openly ironic about fame, paparazzi, afterparties and her own hangovers while genuinely adoring every track she plays; name-drops celebrity friends who may or may not exist; treats the listener like her best mate in the back of the limo at 3am; pokes fun at influencer culture, award shows and her own publicist.
+- **Origin/flavour:** a homage to GTA V's *Non-Stop-Pop FM*. She's the station's default/active on-air persona.
+- **Best fit for documentaries on:** pop, dance, chart-facing and celebrity-adjacent records — anywhere gossip, glamour and self-aware irony sharpen the story. Keep her affection for the music genuine underneath the wit.
+
+### Jools — the music sherpa
+
+- **ElevenLabs voice ID:** `1BUhH8aaMvGMUdGAmWVM` (ElevenLabs voice "Alyx") · **speed 1.0** · engine `cloud`/`elevenlabs`
+- **Tagline:** *"A guide through the good stuff: deep cuts, overlooked gems, and why they matter."*
+- **Tone dials** (0–10): humour **5**, localColour **5**, warmth **8** — earnest warmth.
+- **Soul:** British music obsessive in the lineage of John Peel, Jo Whiley and Zane Lowe; a sherpa who guides you through the library, not just plays it. Lives for deep cuts and tells you why each matters — digging up a concrete liner note (producer, label, scene, a chart or session story) and letting you in on it. Stays grounded; never invents facts or trivia about an artist.
+- **Best fit for documentaries on:** the marquee "Making Of" format — album deep-dives where craft, context and liner-note detail carry the show. His grounded, never-invent-facts ethos is a natural match for this repo's hard rule that the Script Writer works only from the Researcher's notes.
+- **Important:** Jools's defining trait is that he *does not make things up*. The pipeline's separation (writer uses only researched facts) exists to protect exactly this — respect it when scripting him.
+
+*(Rupert — velvety Classic FM presenter — and Sophie — warm Glaswegian storyteller — round out the station roster but are not documentary hosts for now. Full bios in the vault note `SUBWAVE AI Radio` → Personas.)*
 
 ## "Making of" documentaries
 
@@ -38,9 +73,65 @@ The first programme we will produce will be a series of "making of" documentarie
 
 ## ElevenLabs
 
-Insert here details on the ElevenLabs API and/or any SDKs or Libraries from ElevenLabs we will use. https://elevenlabs.io/docs/eleven-api/guides/cookbooks/text-to-speech
+This is how each script segment becomes an audio file (step 6 of the flow). Docs / cookbook: <https://elevenlabs.io/docs/eleven-api/guides/cookbooks/text-to-speech>. Confirm exact request-body field names against the live docs at build time — the shape below is the stable surface, but treat the docs as authority.
+
+**Credentials — decided: a dedicated docs key.** Issue a *separate* restricted ElevenLabs key for this repo (Text-to-Speech access, its own per-key credit cap) — **do not** reuse the live station's "SUBWAVE" key. This isolates documentary budget so a batch render can't exhaust the on-air station's credits mid-broadcast (the 2026-07-01 outage was a spent per-key cap dropping every persona to Piper). Same account/plan, just a separate key. Do **not** commit it; keep it in a gitignored `.env` here. Account = David's ElevenLabs Starter plan (**30k credits/mo**, shared pool across all keys — so a doc render still draws down the same monthly plan the station uses; the separate cap protects against *runaway* spend, not from sharing the monthly total). *Setup TODO: create the key on David's ElevenLabs account and drop it in `.env`.*
+
+**The call** (one HTTP POST per segment):
+
+```
+POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=mp3_44100_128
+Headers: xi-api-key: <ELEVENLABS_API_KEY>,  Content-Type: application/json
+Body: {
+  "text": "<segment text>",
+  "model_id": "eleven_flash_v2_5",
+  "voice_settings": { "stability": 0.5, "similarity_boost": 0.75, "style": 0, "use_speaker_boost": true, "speed": <persona speed> }
+}
+```
+
+Response body is raw MP3 bytes → write straight to `sXXeXX_N_label.mp3`. (An official `elevenlabs` Python/Node SDK exists and wraps this; either the SDK or a plain `requests`/`fetch` call is fine — a plain HTTP call keeps the dependency surface minimal.)
+
+**Per-persona voice + speed** (from `subwave-config`, must match the host of the episode):
+
+| Host | `voice_id` | `voice_settings.speed` |
+| --- | --- | --- |
+| Cara | `ZF6FPAbjXT4488VcRRnw` | 1.1 |
+| Jools | `1BUhH8aaMvGMUdGAmWVM` | 1.0 |
+
+**Model choice — decided: A/B sample gate before full production.** Candidates: **Flash v2.5** (`eleven_flash_v2_5`), ≈**0.5 credits/char**, the station standard — fast and good; vs. **Multilingual v2** (`eleven_multilingual_v2`), ≈**1 credit/char**, potentially more expressive for long-form narration at ~double the cost. **Before any season goes into full production, the pipeline renders 1–2 sample segments through *both* models** (same voice/text) for David to compare, then he decides whether the quality gain justifies the extra cost. Default to Flash v2.5 unless that comparison says otherwise; record the chosen model per season.
+
+**Budget — read before a production run.** A 20–30 min episode is a lot of speech: ~3,000–4,000 spoken words ≈ **18,000–24,000 characters**. At Flash v2.5 that's **≈9,000–12,000 credits per episode** — *over a third of the 30k/mo plan, and it competes with the live station's ongoing TTS usage.* Implications the pipeline must respect:
+- Budget-check before rendering; estimate credits from the script's char count and surface it to the Producer for go/no-go.
+- Strongly favour Flash v2.5 (Multilingual v2 would be ~double, ≈one whole episode = ~⅔ of the monthly plan).
+- A **dedicated docs key** is used (decided above) so a runaway batch render can't blow the station's per-key cap — but note both keys still draw from the **same 30k/mo plan pool**, so heavy doc rendering and heavy on-air use compete for the monthly total. Budgeting per episode remains essential; this is the single biggest operational risk in the pipeline.
+
+**Segmentation & continuity.** Split the script into ordered segments (intro / part_N / conclusion) — one request each, **skipping song slots** (those are Navidrome tracks, not TTS). To avoid audible prosody jumps at segment seams, use the cookbook's **request-stitching** (pass the neighbouring segments' text as `previous_text` / `next_text`, and/or chain `previous_request_ids` / `next_request_ids`). Keep each segment comfortably under the model's per-request character limit; if a single segment is very long, sub-chunk it and stitch. Output **`mp3_44100_128`** so it matches the library; then embed ID3 tags (see Navidrome) before publishing.
 
 
 ## Navidrome
 
-Navidrome is a self-hosted, open source music server and streamer. It is running in LXC106 on the Homelab server, reachable because we will always be running on a Tailscale-enabled connection. Insert relevant details from `/Users/davidamcclain/sync-vault/04 - Life/Homelab/Navidrome Music Server.md` including folder location.
+**Canon:** vault note `Navidrome Music Server`. This section covers only what the pipeline needs to *publish* an episode (step 7). Navidrome is the self-hosted, Subsonic-compatible music server on LXC **106**, `http://192.168.1.110:4533`, reachable over Tailscale. It reads its library from the Synology NAS Music share.
+
+**The read-only gotcha (most important fact).** Navidrome's music mount is **read-only** (`mp0: /mnt/nas/music,mp=/mnt/music,ro=1`). You **cannot** write episode audio through the Navidrome LXC. The same NAS share (`192.168.1.93:/volume1/Music`) is writable from two places:
+- **The PVE host** at `/mnt/nas/music` (NFS `rw`) — reachable now as `root@100.110.0.9`. **Preferred publish path** (we already SSH here).
+- **Jellyfin LXC 101** at `/mnt/music` (rw mount) — alternative.
+
+So publishing = copy the finished MP3s onto the NAS via one of those RW paths, then rescan.
+
+**Tags are mandatory.** Navidrome is strictly tag-based — files without embedded ID3 metadata land under `[Unknown Artist]`/`[Unknown Album]` regardless of folder names. Before copying, each segment MP3 **must** carry ID3 tags. Proposed scheme (decide + record):
+- `ARTIST` = `SUB/WAVE Documentaries` (**decided** — keeps every episode grouped under one artist, cleanly separated from the real-music catalog).
+- `ALBUM` = the episode, e.g. `S01E01 — <Album> (Making Of)`.
+- `TITLE` = segment label (`Intro`, `Part 1`, …).
+- `TRACKNUMBER` = playback order (segments only; reference songs keep their own tags).
+
+**Folder layout on the NAS** (example): `/mnt/nas/music/SUB-WAVE Documentaries/S01E01 - <Album> Making Of/` holding only the spoken-segment MP3s. The **reference album tracks stay where they already live** in the library — they're pulled into the playlist by their existing Subsonic ID, not copied.
+
+**Publish sequence:**
+1. Tag the segment MP3s (e.g. `ffmpeg`/`mutagen`/`id3v2`) and `scp`/`rsync` them into the episode folder on the NAS (via the host RW path).
+2. **Trigger a rescan** so the new files get Subsonic IDs — `GET /rest/startScan.view` (Subsonic API) or the web UI; otherwise the hourly `ScanSchedule = "1h"` picks them up eventually.
+3. **Resolve Subsonic IDs**: the new segment tracks (via `getAlbum` on the new episode "album", or `search3`) and the reference album tracks (via `getAlbum` / `search3` on the source album named in the script).
+4. **Build the playlist** in exact listen order — spoken segments interleaved with reference songs at their scripted slots (intro → part 1 → *song A* → part 2 → *song B* → conclusion). Use Subsonic **`createPlaylist`** with the ordered `songId` list (Navidrome preserves submitted order); adjust later with `updatePlaylist` (`songIdToAdd` / `songIndexToRemove`). Name it for the season/episode, e.g. `SUB/WAVE Docs — S01E01 <Album>`.
+
+**Subsonic API essentials:** base `http://192.168.1.110:4533/rest/<method>.view`, params `u=david`, token auth `t=md5(password+salt)` & `s=<salt>` (or `p=` plaintext), plus `c=<client>&v=1.16.1&f=json`. Credentials = the Navidrome `david` account (in vault; also `NAVIDROME_*` in `/opt/subwave/.env`). ⚠️ That password is shared by SUB/WAVE and Homepage — **read-only use here; never rotate it from this repo** (rotation fans out to 3 services — see the vault note).
+
+*(Alternative playlist mechanism: Navidrome can import `.m3u` files, but the Subsonic API path above is cleaner and config-independent — prefer it.)*

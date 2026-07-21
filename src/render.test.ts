@@ -47,16 +47,72 @@ describe("planEpisode", () => {
 
 describe("sanitizeForTts", () => {
   it("strips emphasis and code markers", () => {
-    expect(sanitizeForTts("It's *Punisher*, her `second` album")).toBe("It's Punisher, her second album");
+    expect(sanitizeForTts("It's *Punisher*, her `second` album.")).toBe("It's Punisher, her second album.");
   });
   it("unwraps markdown links to their text", () => {
-    expect(sanitizeForTts("see [Sound City](https://x.com) studios")).toBe("see Sound City studios");
+    expect(sanitizeForTts("see [Sound City](https://x.com) studios.")).toBe("see Sound City studios.");
   });
   it("strips underscore emphasis but keeps normal prose", () => {
-    expect(sanitizeForTts("a _quiet_ record")).toBe("a quiet record");
+    expect(sanitizeForTts("a _quiet_ record.")).toBe("a quiet record.");
   });
   it("leaves clean prose untouched", () => {
     expect(sanitizeForTts("Just clean words here.")).toBe("Just clean words here.");
+  });
+
+  it("preserves an ellipsis beat and the terminal period", () => {
+    expect(sanitizeForTts("the accidents are sometimes the point.")).toBe(
+      "the accidents are sometimes the point.",
+    );
+    expect(sanitizeForTts("a low, insomniac hum... under it all.")).toBe(
+      "a low, insomniac hum... under it all.",
+    );
+  });
+
+  it("folds em/en dashes into commas so no dangling pause remains", () => {
+    expect(sanitizeForTts("tracked late—a whim—it became the character.")).toBe(
+      "tracked late, a whim, it became the character.",
+    );
+    expect(sanitizeForTts("the gaps of other people's tours – hotel rooms.")).toBe(
+      "the gaps of other people's tours, hotel rooms.",
+    );
+  });
+
+  it("drops a trailing slot separator that leaked into the body", () => {
+    expect(sanitizeForTts("Stay with me.\n\n---")).toBe("Stay with me.");
+    expect(sanitizeForTts("keep digging for the good stuff.\n***")).toBe(
+      "keep digging for the good stuff.",
+    );
+  });
+
+  it("collapses markdown hard-break trailing spaces", () => {
+    expect(sanitizeForTts("a low, insomniac hum  \nrunning under it.")).toBe(
+      "a low, insomniac hum\nrunning under it.",
+    );
+  });
+
+  // The two tails that triggered the Flash v2.5 hallucination in S01E01-punisher:
+  // both trailed off non-terminal (a dangling dash / stray separator), giving the
+  // model an open-ended prompt. Normalization must close them off.
+  it("closes off a segment ending on a dangling dash (the part-3 tail)", () => {
+    expect(sanitizeForTts("This first one grew out of exactly that restlessness —")).toBe(
+      "This first one grew out of exactly that restlessness.",
+    );
+  });
+
+  it("closes off a segment ending on a separator with no punctuation (the part-4 tail)", () => {
+    expect(sanitizeForTts("the accidents are sometimes the point\n\n---")).toBe(
+      "the accidents are sometimes the point.",
+    );
+  });
+
+  it("adds terminal punctuation when a segment just trails off", () => {
+    expect(sanitizeForTts("and that was that")).toBe("and that was that.");
+    expect(sanitizeForTts("she wrote it in tour vans,")).toBe("she wrote it in tour vans.");
+  });
+
+  it("keeps existing terminal punctuation and closing quotes intact", () => {
+    expect(sanitizeForTts('he called it "the closer."')).toBe('he called it "the closer."');
+    expect(sanitizeForTts("Is that the end?")).toBe("Is that the end?");
   });
 });
 

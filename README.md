@@ -2,7 +2,7 @@
 
 **LLM-powered "making of" album documentaries** — an automated production pipeline that researches, scripts, voices (via ElevenLabs TTS), and publishes radio-show-style episodes into a self-hosted [Navidrome](https://www.navidrome.org/) music library.
 
-Part of the [SUB/WAVE](https://github.com/davidamcclain/subwave-config) homelab AI-DJ ecosystem. Each episode is a deep dive into a single album, presented in-character by one of the station's DJ personas (Cara or Jools), with 3–5 full-length reference tracks from the album interleaved throughout — just like a real radio documentary.
+Part of the [SUB/WAVE](https://github.com/uhhuhyeah/subwave-config) homelab AI-DJ ecosystem. Each episode is a deep dive into a single album, presented in-character by one of the station's DJ personas (Cara or Jools), with 3–5 full-length reference tracks from the album interleaved throughout — just like a real radio documentary.
 
 ## Overview
 
@@ -290,5 +290,5 @@ The codebase is thoroughly tested — every deterministic module has unit tests,
 
 ## Related Projects
 
-- [SUB/WAVE](https://github.com/davidamcclain/subwave-config) — the AI-DJ station these documentaries air on
+- [SUB/WAVE](https://github.com/uhhuhyeah/subwave-config) — the AI-DJ station these documentaries air on
 - [Pi](https://github.com/earendil-works/pi-coding-agent) — the agent framework used for orchestration

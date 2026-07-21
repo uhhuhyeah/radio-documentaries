@@ -26,6 +26,7 @@ import * as lint from "./lint";
 import { complete } from "./llm";
 import * as navidrome from "./navidrome";
 import { loadDotenv, songsOfAlbum } from "./navidrome";
+import { publishEpisode } from "./publish";
 import { renderEpisode } from "./render";
 import { webFetchText, webSearch } from "./tools/web";
 
@@ -188,10 +189,29 @@ async function main(): Promise<number> {
         console.log(await client.scanStatus());
         return 0;
       }
-      console.error("navidrome: expected ping | find-album | album-songs | scan-status");
+      if (sub === "scan") {
+        console.log("scan started:", JSON.stringify(await client.startScan()));
+        return 0;
+      }
+      console.error("navidrome: expected ping | find-album | album-songs | scan-status | scan");
       return 2;
     } catch (e) {
       console.error(`navidrome error: ${String(e)}`);
+      return 1;
+    }
+  }
+
+  if (cmd === "publish") {
+    if (!sub) {
+      console.error("publish requires a rundown.json path");
+      return 2;
+    }
+    try {
+      const r = await publishEpisode(sub, flag([...rest], "name"));
+      console.log(`created playlist "${r.playlistName}" with ${r.count} tracks`);
+      return 0;
+    } catch (e) {
+      console.error(`publish error: ${String(e)}`);
       return 1;
     }
   }

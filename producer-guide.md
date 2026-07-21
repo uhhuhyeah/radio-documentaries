@@ -52,8 +52,8 @@ The first programme we will produce will be a series of "making of" documentarie
 
 **High-level flow**
 
-1. I will provide a target album and artist (that exists in Navidrome)
-2. Producer Agent will create a new directory within this repo for the new work. It will validate the basic details and resolve any discrepency up front.
+1. I will provide, in the trigger prompt, a target **album**, **artist** (that exists in Navidrome), and the **host** to present it — e.g. *"Making of Punisher by Phoebe Bridgers, Jools to host."* There is no default host; the host is always named in the prompt (Cara or Jools).
+2. Producer Agent will create a new directory within this repo for the new work. It will validate the basic details — confirm the album/artist resolves in Navidrome and the named host is a valid documentary persona — and resolve any discrepancy up front.
 3. Producer Agent will task Researcher Agent to scour the internet for details and anecdotes surrounding the making of that specific album and prepare detailed and organised notes to pass back to Producer Agent.
   - Example prompt I have used in the past:
   ```
@@ -63,12 +63,15 @@ The first programme we will produce will be a series of "making of" documentarie
   - The Script Writer agent will target content to be 20-30 minutes in length where possible
   - The Script Writer agent will write a script that reflects the persona of the host who will be presenting the content.
   - The Script Writer agent will be able to include actual songs from that album in the programming so it can reference 1-3 tracks from the album on-air.
-  - The Script Writer agent will provide a formatted script file in the working directory set up by the Producer Agent in step 2 that can be easily split into spoken segments and passed section by section into the ElevenLabs API without the need for editing of the outcoming audio. An example script format will be made available to the Script Writer Agent in the working repo.
+  - The Script Writer agent will provide a formatted script file in the working directory set up by the Producer Agent in step 2 that can be easily split into spoken segments and passed section by section into the ElevenLabs API without the need for editing of the outcoming audio. **The script format is specified in `script-format.md` (slot model, filenames, TTS-safe prose rules) — the Writer Agent follows it exactly.**
   - To aid in quality control, the Script Writer Agent will also output a list of issues it had (if any) with the research into a file in the working directory. Eg if the Script Writer Agent didn't know if this album was the band's 2nd album or 3rd album, or if the research didn't include any context for what other bands were doing things in the same time/space and wanted to reference.
 5. With the delivered script, the Producer Agent will ensure quality and formatting, directing back the Script Writer agent any necessary tweaks or fixes. 
 6. With a finalised script, the Producer Agent will supervise a subagent to convert segments of the script into sorted/organised audio files via the ElevenLabs API using the desired DJ Persona Voice.
   - For example, there is an intro, part 1, song 1, part 2, conclusion in a script, we would send the intro text to ElevenLabs for `sXXeXX_1_intro.mp3`, part 1 into `sXXeXX_2_part_1.mp3` etc. Song 1 is not an ElevenLabs concern because that would be referencing a song from this album that is in Navidrome.
-7. With all script parts recorded, the Producer Agent will copy the files into the correct folder in Navidrome, and create a Navidrome Playlist for this Season and Episode with each audio part falling at the correct place in the playlist, and reference songs added to the playlist in the spots left open for it. The end result will be that I can load that playlist in Navidrome, play it in order and listen to a well research, well written, well hosted radio documentary on a given album.
+7. With all script parts recorded, publishing to Navidrome is **split into two workflows** (Navidrome's music mount is read-only to the agent — see `## Navidrome`):
+  - **7a. Agent hand-off → manual move.** The Producer Agent delivers the finished, **ID3-tagged** segment MP3s in the working directory, named in playback order, alongside a **rundown/cue sheet** (the ordered list of every slot — spoken segments and reference songs). **David manually moves the MP3s into the NAS Music directory** and lets Navidrome rescan (hourly, or a manual scan).
+  - **7b. Prompted playlist build.** *After* the rescan, when David prompts it, the agent resolves the Subsonic IDs (new segments + in-place reference tracks) and creates the Navidrome playlist for the Season/Episode with every part in the correct order and reference songs slotted in. On-demand, not automatic.
+  - The end result: David loads that playlist in Navidrome, plays it in order, and hears a well-researched, well-written, well-hosted radio documentary on a given album.
 
 
 ## ElevenLabs
@@ -112,11 +115,11 @@ Response body is raw MP3 bytes → write straight to `sXXeXX_N_label.mp3`. (An o
 
 **Canon:** vault note `Navidrome Music Server`. This section covers only what the pipeline needs to *publish* an episode (step 7). Navidrome is the self-hosted, Subsonic-compatible music server on LXC **106**, `http://192.168.1.110:4533`, reachable over Tailscale. It reads its library from the Synology NAS Music share.
 
-**The read-only gotcha (most important fact).** Navidrome's music mount is **read-only** (`mp0: /mnt/nas/music,mp=/mnt/music,ro=1`). You **cannot** write episode audio through the Navidrome LXC. The same NAS share (`192.168.1.93:/volume1/Music`) is writable from two places:
-- **The PVE host** at `/mnt/nas/music` (NFS `rw`) — reachable now as `root@100.110.0.9`. **Preferred publish path** (we already SSH here).
-- **Jellyfin LXC 101** at `/mnt/music` (rw mount) — alternative.
+**The read-only gotcha (most important fact).** Navidrome's music mount is **read-only** (`mp0: /mnt/nas/music,mp=/mnt/music,ro=1`), so the agent does not write episode audio into the library at all. **Decided workflow: David moves the files manually.** The same NAS share (`192.168.1.93:/volume1/Music`) is writable from the PVE host (`/mnt/nas/music`, NFS `rw`) and Jellyfin LXC 101 (`/mnt/music`, rw) if a scripted copy is ever wanted, but by default the agent's job ends at delivering tagged files + a cue sheet; David does the move.
 
-So publishing = copy the finished MP3s onto the NAS via one of those RW paths, then rescan.
+**Two distinct workflows (do not conflate them):**
+- **Publish (manual, David).** Move the agent-delivered, ID3-tagged MP3s into an episode folder on the NAS Music dir; let Navidrome rescan.
+- **Playlist build (agent, on-demand).** *Only after the rescan*, when prompted, the agent resolves Subsonic IDs and creates the playlist. It never assumes the files are already scanned — it verifies (a `search3`/`getAlbum` lookup returns the segments) before building, and says so if they're not visible yet.
 
 **Tags are mandatory.** Navidrome is strictly tag-based — files without embedded ID3 metadata land under `[Unknown Artist]`/`[Unknown Album]` regardless of folder names. Before copying, each segment MP3 **must** carry ID3 tags. Proposed scheme (decide + record):
 - `ARTIST` = `SUB/WAVE Documentaries` (**decided** — keeps every episode grouped under one artist, cleanly separated from the real-music catalog).
@@ -127,10 +130,10 @@ So publishing = copy the finished MP3s onto the NAS via one of those RW paths, t
 **Folder layout on the NAS** (example): `/mnt/nas/music/SUB-WAVE Documentaries/S01E01 - <Album> Making Of/` holding only the spoken-segment MP3s. The **reference album tracks stay where they already live** in the library — they're pulled into the playlist by their existing Subsonic ID, not copied.
 
 **Publish sequence:**
-1. Tag the segment MP3s (e.g. `ffmpeg`/`mutagen`/`id3v2`) and `scp`/`rsync` them into the episode folder on the NAS (via the host RW path).
-2. **Trigger a rescan** so the new files get Subsonic IDs — `GET /rest/startScan.view` (Subsonic API) or the web UI; otherwise the hourly `ScanSchedule = "1h"` picks them up eventually.
-3. **Resolve Subsonic IDs**: the new segment tracks (via `getAlbum` on the new episode "album", or `search3`) and the reference album tracks (via `getAlbum` / `search3` on the source album named in the script).
-4. **Build the playlist** in exact listen order — spoken segments interleaved with reference songs at their scripted slots (intro → part 1 → *song A* → part 2 → *song B* → conclusion). Use Subsonic **`createPlaylist`** with the ordered `songId` list (Navidrome preserves submitted order); adjust later with `updatePlaylist` (`songIdToAdd` / `songIndexToRemove`). Name it for the season/episode, e.g. `SUB/WAVE Docs — S01E01 <Album>`.
+1. *(Agent, at production time)* Embed ID3 tags into the segment MP3s (e.g. `ffmpeg` / `mutagen` / `id3v2`) in the working directory and deliver them + the cue sheet. **The agent stops here.**
+2. *(Manual, David)* Move the tagged MP3s into an episode folder on the NAS Music dir, then **trigger a rescan** — `GET /rest/startScan.view` (Subsonic API) or the web UI; otherwise the hourly `ScanSchedule = "1h"` picks them up eventually.
+3. *(Agent, when prompted)* **Resolve Subsonic IDs**: the new segment tracks (via `getAlbum` on the new episode "album", or `search3`) and the reference album tracks (via `getAlbum` / `search3` on the source album named in the script). If the segments aren't visible yet, stop and tell David the scan hasn't completed.
+4. *(Agent, when prompted)* **Build the playlist** in exact listen order from the cue sheet — spoken segments interleaved with reference songs at their scripted slots (intro → part 1 → *song A* → part 2 → *song B* → conclusion). Use Subsonic **`createPlaylist`** with the ordered `songId` list (Navidrome preserves submitted order); adjust later with `updatePlaylist` (`songIdToAdd` / `songIndexToRemove`). Name it for the season/episode, e.g. `SUB/WAVE Docs — S01E01 <Album>`.
 
 **Subsonic API essentials:** base `http://192.168.1.110:4533/rest/<method>.view`, params `u=david`, token auth `t=md5(password+salt)` & `s=<salt>` (or `p=` plaintext), plus `c=<client>&v=1.16.1&f=json`. Credentials = the Navidrome `david` account (in vault; also `NAVIDROME_*` in `/opt/subwave/.env`). ⚠️ That password is shared by SUB/WAVE and Homepage — **read-only use here; never rotate it from this repo** (rotation fans out to 3 services — see the vault note).
 

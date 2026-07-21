@@ -56,21 +56,31 @@ radio-documentaries/
 │   │   ├── lyrics.ts           # LRCLIB verbatim lyric fetcher
 │   │   └── util.ts             # Pi AgentToolResult helper
 │   └── __fixtures__/           # Test fixtures (clean/broken scripts)
-├── S01E01-punisher/            # Example: produced episode (Phoebe Bridgers — Punisher)
-│   ├── script.md               # Formatted script (Cara persona, 4 songs)
-│   ├── research.md             # Research notes from the Researcher
-│   ├── rundown.json             # Cue sheet (spoken segments + song references)
-│   └── audio/                  # Rendered MP3 segments
-├── examples/                   # Example outputs
+├── examples/                   # Curated sample output (a produced script.md)
 ├── pipeline/                   # (reserved for future Python port)
 ├── settings.toml               # Central config — models, voices, TTS model
-├── seasons.md                  # Episode catalog (the source of truth for numbering)
+├── seasons.example.md          # Episode-catalog template — copy to seasons.md
 ├── script-format.md            # Script format specification (the contract)
 ├── producer-guide.md           # Complete production guide & design document
 ├── package.json
 ├── tsconfig.json
+├── LICENSE                     # MIT
 └── .env.example                # Required environment variables
 ```
+
+### Local-only artifacts (not in git)
+
+The pipeline generates content that is deliberately kept out of version control — this
+repo is about the **harness**, not the documentaries it happens to produce:
+
+- **`S{season}E{episode}-<slug>/`** — per-episode working directories holding the
+  generated `research.md`, `script.md`, `rundown.json`, and `audio/`. Ignored via
+  `S[0-9][0-9]E[0-9][0-9]-*/`.
+- **`seasons.md`** — your live catalog. Like `.env`, it's git-ignored and seeded from
+  `seasons.example.md`.
+
+A single curated `script.md` lives in `examples/` so readers can see the output format
+without the full generated corpus being committed.
 
 ## Prerequisites
 
@@ -88,6 +98,7 @@ pnpm install
 cp .env.example .env
 # Fill in NAVIDROME_URL, NAVIDROME_USER, NAVIDROME_PASS,
 # ELEVENLABS_API_KEY, OPENROUTER_API_KEY, BRAVE_API_KEY
+cp seasons.example.md seasons.md   # your local episode catalog (git-ignored)
 ```
 
 ## Configuration
@@ -228,7 +239,7 @@ Two SUB/WAVE DJ personas host documentaries:
 
 ## Episode Catalog
 
-Episodes are tracked in [`seasons.md`](./seasons.md) — a markdown table that serves as the authoritative index:
+Episodes are tracked in `seasons.md` (a local artifact, seeded from [`seasons.example.md`](./seasons.example.md)) — a markdown table that serves as the authoritative index:
 
 | Ep | Album | Artist | Host | Status | Dir | Published |
 | -- | ----- | ------ | ---- | ------ | --- | --------- |

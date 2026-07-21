@@ -2,6 +2,11 @@
 
 The authoritative index of every documentary season and episode. The **Producer Agent** reads this to assign the next episode number, and appends/updates a row as an episode moves through the pipeline. Working-directory names and episode numbers **derive from here** — if this file and a working dir ever disagree, **this file wins**.
 
+> **This is the template.** The live catalog (`seasons.md`) is a local artifact and is
+> git-ignored, just like `.env`. Copy this file to `seasons.md` before your first run:
+> `cp seasons.example.md seasons.md`. The Producer Agent then mutates your local
+> `seasons.md` as episodes move through the pipeline.
+
 **Active season: 1** ← new episodes land here unless the trigger names another season.
 
 **Status lifecycle:**
@@ -10,7 +15,7 @@ The authoritative index of every documentary season and episode. The **Producer 
 | --- | --- |
 | `planned` | Queued for a season, not started (used for season planning). No dir yet. |
 | `in-production` | Working dir created; research/script/audio underway. |
-| `recorded` | Audio delivered to the working dir; awaiting David's manual move to the NAS + rescan. |
+| `recorded` | Audio delivered to the working dir; awaiting a manual move to the NAS + rescan. |
 | `published` | Navidrome playlist built and live. |
 
 ---
@@ -46,8 +51,4 @@ Format reference (illustrative — not live episodes):
 
 | Ep | Album | Artist | Host | Status | Dir | Published |
 | -- | ----- | ------ | ---- | ------ | --- | --------- |
-| 01 | Punisher | Phoebe Bridgers | Cara | published | S01E01-punisher | 2026-07-21 |
-
-
-
-
+| *(no episodes yet — the first production becomes Ep 01)* | | | | | | |

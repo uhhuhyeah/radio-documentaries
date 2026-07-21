@@ -95,8 +95,8 @@ export function lintText(text: string): Finding[] {
   if (typeof declared === "number" && declared !== nSongs) {
     err(`reference_tracks=${declared} but found ${nSongs} SONG slot(s)`);
   }
-  if (!(nSongs >= 1 && nSongs <= 3)) {
-    warn(`${nSongs} reference songs (script-format.md expects 1-3)`);
+  if (!(nSongs >= 3 && nSongs <= 5)) {
+    warn(`${nSongs} reference songs (script-format.md expects 3-5, interleaved for a radio-show feel)`);
   }
 
   // 9. Soft duration sanity: spoken minutes alone shouldn't blow the target.

@@ -57,7 +57,12 @@ Output ONLY the script — nothing before or after it. Follow this format EXACTL
    Songs play in full with no talkover; write the hand-off into the surrounding spoken slots.
 
 LENGTH: target 20–30 minutes ≈ 3,500–4,500 spoken words TOTAL. Write expansively and in depth
-across many parts — do NOT be terse. Use 1–3 reference tracks from the album (SONG slots).
+across many parts — do NOT be terse.
+
+MUSIC: this is a radio show, so interleave 3–5 reference tracks from the album (SONG slots)
+SPREAD THROUGHOUT — roughly one every few spoken parts, not clustered. Pattern: spoken part(s) →
+song → spoken part(s) → song → … Introduce each track in the spoken part just before it and pick
+back up after. Pick songs the research actually discusses so you have something to say about them.
 
 Exact shape to mirror:
 ---

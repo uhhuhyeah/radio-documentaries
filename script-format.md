@@ -39,7 +39,7 @@ host: p_jools            # persona id from subwave-config (p_jools or p_cara)
 host_name: "Jools"       # display name, must match the persona
 model: eleven_flash_v2_5 # default; may be eleven_multilingual_v2 after the A/B sample gate
 target_minutes: 25       # aim 20–30 total (spoken + songs)
-reference_tracks: 2      # count of SONG slots below (1–3)
+reference_tracks: 4      # count of SONG slots below (3–5, interleaved like a radio show)
 ---
 ```
 
@@ -132,7 +132,7 @@ The default model is **ElevenLabs Flash v2.5, which does _not_ support audio tag
 
 - Aim **~300–700 words per SPOKEN slot** (~2–5 minutes). Vary length for rhythm.
 - If a single idea needs more, split it into consecutive SPOKEN slots rather than one giant block — keeps each ElevenLabs request comfortably within limits and gives the pipeline clean seams.
-- Rough duration math for hitting `target_minutes`: **~150 spoken words ≈ 1 minute.** Each SONG adds its own runtime (typically 3–5 min). So a 25-min episode with two songs ≈ **~2,500–3,000 spoken words** across the SPOKEN slots.
+- Rough duration math: **~150 spoken words ≈ 1 minute** of talk. `target_minutes` is the **spoken** target; the **3–5 reference songs** add their own runtime (~3–5 min each) on top, so a real episode plays like a **radio show, ~30–45 min total** (talk + music). Interleave the songs throughout — one every few spoken parts — rather than bolting them on at the end.
 
 ### Continuity across seams
 

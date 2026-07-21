@@ -28,6 +28,7 @@ import * as navidrome from "./navidrome";
 import { loadDotenv, songsOfAlbum } from "./navidrome";
 import { publishEpisode } from "./publish";
 import { renderEpisode } from "./render";
+import { gatherAlbumLyrics } from "./tools/lyrics";
 import { webFetchText, webSearch } from "./tools/web";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -230,6 +231,21 @@ async function main(): Promise<number> {
       console.error(`publish error: ${String(e)}`);
       return 1;
     }
+  }
+
+  if (cmd === "lyrics") {
+    const a = [sub, ...rest].filter((x): x is string => !!x);
+    const album = flag(a, "album");
+    const artist = flag(a, "artist");
+    if (!album || !artist) {
+      console.error("lyrics requires --album --artist");
+      return 2;
+    }
+    const results = await gatherAlbumLyrics(album, artist);
+    const hit = results.filter((r) => r.lyrics).length;
+    console.log(`lyrics: ${hit}/${results.length} tracks`);
+    for (const r of results) console.log(`  ${r.lyrics ? "✓" : "✗"} ${r.track}`);
+    return 0;
   }
 
   if (cmd === "research") {

@@ -14,8 +14,7 @@ import { writeFileSync } from "node:fs";
 
 import { config } from "../config";
 import { complete } from "../llm";
-import { clientFromEnv, songsOfAlbum } from "../navidrome";
-import { fetchLyrics } from "../tools/lyrics";
+import { gatherAlbumLyrics } from "../tools/lyrics";
 import { type SearchResult, webFetchText, webSearch } from "../tools/web";
 import { RESEARCHER_SYSTEM } from "./system-prompts";
 
@@ -34,19 +33,9 @@ const PAGE_CHARS = 5000;
  */
 async function gatherLyrics(album: string, artist: string): Promise<string> {
   try {
-    const client = clientFromEnv();
-    const alb = await client.findAlbum(album, artist);
-    if (!alb) return "";
-    const tracks = songsOfAlbum(await client.getAlbum(alb.id));
-    const blocks: string[] = [];
-    for (const t of tracks) {
-      const title = String(t.title ?? "").trim();
-      if (!title) continue;
-      const lyr = await fetchLyrics(artist, title, album);
-      if (lyr) blocks.push(`### ${title}\n\n${lyr}`);
-      await delay(400);
-    }
-    process.stderr.write(`[researcher] lyrics: ${blocks.length}/${tracks.length} tracks\n`);
+    const results = await gatherAlbumLyrics(album, artist);
+    const blocks = results.filter((r) => r.lyrics).map((r) => `### ${r.track}\n\n${r.lyrics}`);
+    process.stderr.write(`[researcher] lyrics: ${blocks.length}/${results.length} tracks\n`);
     if (!blocks.length) return "";
     return (
       "\n\n## Track Lyrics (VERBATIM — the ONLY source for quoting lyrics)\n\n" +

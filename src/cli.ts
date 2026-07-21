@@ -231,8 +231,9 @@ async function main(): Promise<number> {
       console.error("render requires a script path");
       return 2;
     }
+    const maxArg = flag([...rest], "max-spoken");
     try {
-      const r = await renderEpisode(sub);
+      const r = await renderEpisode(sub, maxArg ? { maxSpoken: parseInt(maxArg, 10) } : {});
       console.log(`rendered ${r.rendered} segment(s) → ${r.audioDir}\ncue → ${r.cuePath}`);
       return 0;
     } catch (e) {

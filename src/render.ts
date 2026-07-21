@@ -110,6 +110,8 @@ export interface RenderResult {
 export interface RenderOptions {
   apiKey?: string;
   audioDir?: string;
+  /** Render only the first N spoken segments (cheap sample). Omit for the full episode. */
+  maxSpoken?: number;
 }
 
 export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}): Promise<RenderResult> {
@@ -125,11 +127,13 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
   const audioDir = opts.audioDir ?? join(dirname(scriptPath), "audio");
   mkdirSync(audioDir, { recursive: true });
 
+  const steps = opts.maxSpoken ? plan.steps.slice(0, opts.maxSpoken) : plan.steps;
+
   let prevIndex = -99;
   let prevRequestIds: string[] = [];
   let rendered = 0;
 
-  for (const step of plan.steps) {
+  for (const step of steps) {
     const adjacent = step.index === prevIndex + 1; // contiguous index ⟹ no song between
     const body = ttsBody(sanitizeForTts(step.text), modelId, voice.speed, {
       previousText: step.prevText ? sanitizeForTts(step.prevText) : undefined,
@@ -150,11 +154,16 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
     rendered++;
   }
 
-  const cuePath = join(dirname(scriptPath), "rundown.json");
+  // For a sample, the cue covers only the slots up to the last rendered segment.
+  const lastIdx = steps.length ? steps[steps.length - 1]!.index : 0;
+  const cue = opts.maxSpoken ? plan.cue.filter((c) => c.index <= lastIdx) : plan.cue;
+
+  const cueName = opts.maxSpoken ? "rundown.sample.json" : "rundown.json";
+  const cuePath = join(dirname(scriptPath), cueName);
   writeFileSync(
     cuePath,
-    JSON.stringify({ season: plan.season, episode: plan.episode, album: albumTag, audioDir, cue: plan.cue }, null, 2),
+    JSON.stringify({ season: plan.season, episode: plan.episode, album: albumTag, audioDir, cue }, null, 2),
   );
 
-  return { audioDir, cuePath, rendered, cue: plan.cue };
+  return { audioDir, cuePath, rendered, cue };
 }

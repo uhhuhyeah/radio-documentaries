@@ -88,7 +88,18 @@ async function main(): Promise<number> {
       console.log(`${r.action}: S${String(r.season).padStart(2, "0")}E${String(r.episode).padStart(2, "0")} → ${r.dir}`);
       return 0;
     }
-    console.error("catalog: expected next | list | assign");
+    if (sub === "set-status") {
+      const epArg = flag(rest, "episode");
+      const status = flag(rest, "status");
+      if (season === undefined || !epArg || !status) {
+        console.error("set-status requires --season --episode --status [--published YYYY-MM-DD]");
+        return 2;
+      }
+      catalog.setStatus(season, parseInt(epArg, 10), status, flag(rest, "published"), file ?? catalog.DEFAULT_PATH);
+      console.log(`S${String(season).padStart(2, "0")}E${String(parseInt(epArg, 10)).padStart(2, "0")} → ${status}`);
+      return 0;
+    }
+    console.error("catalog: expected next | list | assign | set-status");
     return 2;
   }
 

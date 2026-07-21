@@ -46,5 +46,6 @@ Format reference (illustrative — not live episodes):
 
 | Ep | Album | Artist | Host | Status | Dir | Published |
 | -- | ----- | ------ | ---- | ------ | --- | --------- |
-| 01 | Punisher | Phoebe Bridgers | Cara | in-production | S01E01-punisher | — |
+| 01 | Punisher | Phoebe Bridgers | Cara | recorded | S01E01-punisher | — |
+
 

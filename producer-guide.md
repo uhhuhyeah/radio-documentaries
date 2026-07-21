@@ -52,8 +52,11 @@ The first programme we will produce will be a series of "making of" documentarie
 
 **High-level flow**
 
-1. I will provide, in the trigger prompt, a target **album**, **artist** (that exists in Navidrome), and the **host** to present it — e.g. *"Making of Punisher by Phoebe Bridgers, Jools to host."* There is no default host; the host is always named in the prompt (Cara or Jools).
-2. Producer Agent will create a new directory within this repo for the new work. It will validate the basic details — confirm the album/artist resolves in Navidrome and the named host is a valid documentary persona — and resolve any discrepancy up front.
+1. I will provide, in the trigger prompt, a target **album**, **artist** (that exists in Navidrome), and the **host** to present it — e.g. *"Making of Punisher by Phoebe Bridgers, Jools to host."* There is no default host; the host is always named in the prompt (Cara or Jools). I may optionally name a **season** (e.g. "…for season 2"); if I don't, the Active season applies. **I never give the episode number** — the Producer Agent derives it.
+2. Producer Agent will:
+  - **Assign the season/episode number from `seasons.md`** (the catalog): use the trigger's season or the Active season, then claim a matching `planned` row or append the next number (highest Ep + 1). It updates the catalog row to `in-production`. Numbering rules live in `seasons.md`.
+  - **Validate the basics** — confirm the album/artist resolves in Navidrome and the named host is a valid documentary persona (Cara/Jools) — and resolve any discrepancy up front.
+  - **Create the working directory** `S{season:02}E{ep:02}-<album-slug>` (matching the catalog Dir cell) for the new work.
 3. Producer Agent will task Researcher Agent to scour the internet for details and anecdotes surrounding the making of that specific album and prepare detailed and organised notes to pass back to Producer Agent.
   - Example prompt I have used in the past:
   ```
@@ -69,8 +72,8 @@ The first programme we will produce will be a series of "making of" documentarie
 6. With a finalised script, the Producer Agent will supervise a subagent to convert segments of the script into sorted/organised audio files via the ElevenLabs API using the desired DJ Persona Voice.
   - For example, there is an intro, part 1, song 1, part 2, conclusion in a script, we would send the intro text to ElevenLabs for `sXXeXX_1_intro.mp3`, part 1 into `sXXeXX_2_part_1.mp3` etc. Song 1 is not an ElevenLabs concern because that would be referencing a song from this album that is in Navidrome.
 7. With all script parts recorded, publishing to Navidrome is **split into two workflows** (Navidrome's music mount is read-only to the agent — see `## Navidrome`):
-  - **7a. Agent hand-off → manual move.** The Producer Agent delivers the finished, **ID3-tagged** segment MP3s in the working directory, named in playback order, alongside a **rundown/cue sheet** (the ordered list of every slot — spoken segments and reference songs). **David manually moves the MP3s into the NAS Music directory** and lets Navidrome rescan (hourly, or a manual scan).
-  - **7b. Prompted playlist build.** *After* the rescan, when David prompts it, the agent resolves the Subsonic IDs (new segments + in-place reference tracks) and creates the Navidrome playlist for the Season/Episode with every part in the correct order and reference songs slotted in. On-demand, not automatic.
+  - **7a. Agent hand-off → manual move.** The Producer Agent delivers the finished, **ID3-tagged** segment MP3s in the working directory, named in playback order, alongside a **rundown/cue sheet** (the ordered list of every slot — spoken segments and reference songs), and sets the episode's `seasons.md` status to **`recorded`**. **David manually moves the MP3s into the NAS Music directory** and lets Navidrome rescan (hourly, or a manual scan).
+  - **7b. Prompted playlist build.** *After* the rescan, when David prompts it, the agent resolves the Subsonic IDs (new segments + in-place reference tracks) and creates the Navidrome playlist for the Season/Episode with every part in the correct order and reference songs slotted in. It then sets the `seasons.md` status to **`published`** and fills the Published date. On-demand, not automatic.
   - The end result: David loads that playlist in Navidrome, plays it in order, and hears a well-researched, well-written, well-hosted radio documentary on a given album.
 
 
@@ -138,3 +141,45 @@ Response body is raw MP3 bytes → write straight to `sXXeXX_N_label.mp3`. (An o
 **Subsonic API essentials:** base `http://192.168.1.110:4533/rest/<method>.view`, params `u=david`, token auth `t=md5(password+salt)` & `s=<salt>` (or `p=` plaintext), plus `c=<client>&v=1.16.1&f=json`. Credentials = the Navidrome `david` account (in vault; also `NAVIDROME_*` in `/opt/subwave/.env`). ⚠️ That password is shared by SUB/WAVE and Homepage — **read-only use here; never rotate it from this repo** (rotation fans out to 3 services — see the vault note).
 
 *(Alternative playlist mechanism: Navidrome can import `.m3u` files, but the Subsonic API path above is cleaner and config-independent — prefer it.)*
+
+
+## Automation & what's scriptable
+
+**Design intent:** this pipeline is a **deterministic harness with two LLM stages**, not one big prompt an LLM is trusted to follow. Everything that *can* be code should be code; the LLM is confined to research and writing, both behind machine-checkable gates. The format contract (`script-format.md`), the catalog (`seasons.md`), and the API-based publish path are what make that possible. This is a target architecture — not built yet — recorded so implementation is legible when we get to it.
+
+**Stage breakdown** — what's deterministic code vs. what genuinely needs an LLM:
+
+| Flow step | Nature | Mechanism |
+| --- | --- | --- |
+| 1. Trigger (album/artist/host/season) | **Script** | Structured input. In an automated run it's not a prompt at all — it's the next `planned` row in `seasons.md`. |
+| 2a. Episode numbering | **Script** | Read `seasons.md`, increment, append. |
+| 2b. Validate album/host resolves | **Script** | Subsonic `search3` against Navidrome; host ∈ {Cara, Jools}. Fuzzy-match + flag ambiguity. |
+| 2c. Create working dir + front matter | **Script** | Templated scaffold. |
+| **3. Research** | **LLM** | Irreducible. Deep web research → `research.html`. |
+| **4. Script writing** | **LLM** | Irreducible. Persona voice, research-only → `script.md`. |
+| 4b. Format/QC lint | **Script** | Validate `script.md` against `script-format.md`: front matter valid, slot headings parse, indices monotonic, song metadata present, word-count→duration in band. **Gates the LLM output mechanically.** |
+| 5. Editorial QC | **Hybrid** | Format = lint (script); "is it good" = LLM/human. |
+| **6. TTS render** | **Script** | Parse slots → ElevenLabs POST per SPOKEN slot (voice/model/speed from config) → request-stitch → save → embed ID3 tags. |
+| 6b. Budget check / A-B sample | **Script** | Char-count × credit rate vs. a cap; render 1–2 segments both models. |
+| 7a. Deliver tagged files + cue sheet | **Script** | Derived from the parsed script. |
+| **7a→7b. Move to NAS** | **Human** | The one true automation seam (deliberate — see Navidrome § read-only gotcha). |
+| 7b. Rescan-check + resolve IDs + build playlist | **Script** | Subsonic `startScan` / `getAlbum` / `createPlaylist`. |
+
+**Only steps 3 and 4 require an LLM**, and even they are bounded — research has a defined deliverable, and the script must pass the linter before rendering.
+
+**Harness shape (when built):** a thin driver + small deterministic modules, two of which shell out to an LLM. State lives in `seasons.md` + the working dir (no database; matches house style). Resumable — each stage checks what's already done.
+
+- `catalog` — read/append `seasons.md`, compute next episode
+- `navidrome` — Subsonic client (resolve IDs, scan, create playlist)
+- `render` — `script.md` → tagged MP3s via ElevenLabs
+- `lint_script` — enforce the format contract
+- `budget` — estimate/cap credits
+- `research` + `write` — the two LLM calls (Claude API/SDK, or the Hermes homelab runtime once it drives things)
+- `run` — orchestrator: resumable, **pauses at the NAS-move seam**, resumes on the next trigger
+
+**Toward monthly automation (the eventual goal):** a cron produces research→script→render→stage, then pings David "*SxxEyy ready to move*"; after he moves the files and Navidrome rescans, a second invocation builds the playlist. Human-in-the-loop by design, and the manual NAS move fits that cadence cleanly. Four things a fully unattended run must handle:
+
+1. **The manual NAS move** — makes the run naturally **two-phase** (produce-and-stage, then publish). Fine for now; the harness pauses and resumes. (It *could* write via the PVE-host RW path if we ever want hands-off, but manual is the chosen default.)
+2. **Album source** — the cron pops the next `planned` row from `seasons.md`. **This is why season planning matters: the plan is the automation queue.**
+3. **ElevenLabs budget** — ~10k credits/episode against a shared 30k/mo plan → budget-check with a confirm or hard cap before spending.
+4. **QC blockers** — if the Writer logs a `[blocker]` in `qc-issues.md`, the run **halts and notifies** rather than proceeding on guesses.

@@ -12,16 +12,16 @@
 
 import { writeFileSync } from "node:fs";
 
+import { config } from "../config";
 import { complete } from "../llm";
 import { type SearchResult, webFetchText, webSearch } from "../tools/web";
 import { RESEARCHER_SYSTEM } from "./system-prompts";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-// Research synthesis is factual organisation, not on-air patter — a faster model
-// than the DJ's qwen3-235b is the right tool (this one is the station's prior DJ,
-// MoE 30B/3B-active, much faster; override with DOCS_RESEARCH_MODEL).
-const RESEARCH_MODEL = process.env.DOCS_RESEARCH_MODEL ?? "qwen/qwen3-30b-a3b-instruct-2507";
+// Research synthesis is factual organisation, not on-air patter — the config
+// defaults it to a faster model than the DJ's qwen3-235b (settings.toml [models].research).
+const RESEARCH_MODEL = config.models.research;
 const MAX_PAGES = 5;
 const PAGE_CHARS = 5000;
 

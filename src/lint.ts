@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 
-import { MODEL_CREDIT_RATE, REQUIRED_FRONT_MATTER, VOICES, WORDS_PER_MINUTE } from "./constants";
+import { MODEL_CREDIT_RATE, PERSONAS, REQUIRED_FRONT_MATTER, WORDS_PER_MINUTE } from "./constants";
 import * as sm from "./scriptmodel";
 
 export type Level = "ERROR" | "WARN";
@@ -38,10 +38,10 @@ export function lintText(text: string): Finding[] {
 
   // 2. Host + host_name coherence.
   const host = fm.host;
-  if (typeof host === "string" && !(host in VOICES)) {
-    err(`host ${JSON.stringify(host)} is not a documentary persona ${JSON.stringify(Object.keys(VOICES))}`);
-  } else if (typeof host === "string" && host in VOICES) {
-    const expected = VOICES[host]!.name;
+  if (typeof host === "string" && !(host in PERSONAS)) {
+    err(`host ${JSON.stringify(host)} is not a documentary persona ${JSON.stringify(Object.keys(PERSONAS))}`);
+  } else if (typeof host === "string" && host in PERSONAS) {
+    const expected = PERSONAS[host]!.name;
     if (fm.host_name !== undefined && fm.host_name !== expected) {
       warn(`host_name ${JSON.stringify(fm.host_name)} != persona name ${JSON.stringify(expected)}`);
     }

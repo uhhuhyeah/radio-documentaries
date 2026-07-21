@@ -1,0 +1,25 @@
+# radio-documentaries pipeline settings — the ONE place to change models & voices.
+# Edit here, then run the pipeline. Env vars (DOCS_RESEARCH_MODEL / DOCS_WRITE_MODEL /
+# DOCS_PRODUCER_MODEL / DOCS_LLM_TIMEOUT_MS) override the matching value when set.
+
+[models]
+# OpenRouter model ids (https://openrouter.ai/models). qwen3-30b is fast + clean for
+# bulk synthesis/writing; qwen3-235b is richer but slow (used by the orchestrating Producer).
+research = "qwen/qwen3-30b-a3b-instruct-2507"
+write    = "qwen/qwen3-30b-a3b-instruct-2507"
+producer = "qwen/qwen3-235b-a22b-2507"
+timeout_ms = 300000
+
+[elevenlabs]
+# Default TTS model stamped into new scripts' front matter (per-episode front matter wins;
+# `render --model` overrides at render time). eleven_flash_v2_5 ≈0.5 cr/char; eleven_multilingual_v2 ≈1.
+model = "eleven_flash_v2_5"
+
+# Per-persona ElevenLabs voice (from subwave-config). Keys are persona ids.
+[voices.p_cara]
+voice_id = "ZF6FPAbjXT4488VcRRnw"  # "Amelia"
+speed = 1.1
+
+[voices.p_jools]
+voice_id = "1BUhH8aaMvGMUdGAmWVM"  # "Alyx"
+speed = 1.0

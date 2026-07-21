@@ -3,17 +3,8 @@
  * Mirrors subwave-config; see producer-guide.md "SUB/WAVE Personas".
  */
 
-export interface Voice {
-  name: string;
-  voiceId: string;
-  speed: number;
-}
-
-/** Documentary hosts: persona id -> ElevenLabs voice + speed. */
-export const VOICES: Record<string, Voice> = {
-  p_cara: { name: "Cara", voiceId: "ZF6FPAbjXT4488VcRRnw", speed: 1.1 },
-  p_jools: { name: "Jools", voiceId: "1BUhH8aaMvGMUdGAmWVM", speed: 1.0 },
-};
+// Voice ids + speeds now live in settings.toml (see src/config.ts). Persona
+// identity/character stays here (it's prose, not a knob to tweak per-run).
 
 /** Host persona characterisation (from subwave-config) — injected into the write prompt. */
 export interface Persona {

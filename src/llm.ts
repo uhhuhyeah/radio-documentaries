@@ -8,8 +8,10 @@
 import { createModels, type AssistantMessage, type Context } from "@earendil-works/pi-ai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 
-export const DEFAULT_MODEL = process.env.DOCS_LLM_MODEL ?? "qwen/qwen3-235b-a22b-2507";
-const TIMEOUT_MS = Number(process.env.DOCS_LLM_TIMEOUT_MS ?? 300_000);
+import { config } from "./config";
+
+export const DEFAULT_MODEL = config.models.write;
+const TIMEOUT_MS = config.models.timeoutMs;
 
 export function makeModels() {
   const models = createModels();

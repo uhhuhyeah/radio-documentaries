@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { researchAlbum } from "./agents/researcher";
 import { writeScript } from "./agents/writer";
 import * as budget from "./budget";
+import { config } from "./config";
 import * as catalog from "./catalog";
 import * as lint from "./lint";
 import { complete } from "./llm";
@@ -39,8 +40,13 @@ async function main(): Promise<number> {
   loadDotenv(join(REPO_ROOT, ".env")); // make .env keys available to every command
   const [cmd, sub, ...rest] = process.argv.slice(2);
 
+  if (cmd === "config") {
+    console.log(JSON.stringify(config, null, 2));
+    return 0;
+  }
+
   if (cmd === "llm-check") {
-    const model = process.env.DOCS_LLM_MODEL ?? "qwen/qwen3-235b-a22b-2507";
+    const model = config.models.write;
     try {
       const reply = await complete("You are terse.", "Reply with exactly: OK");
       console.log(`llm-check (openrouter/${model}): ${reply.trim() || "(empty)"}`);

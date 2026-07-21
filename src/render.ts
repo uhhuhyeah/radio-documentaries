@@ -15,12 +15,11 @@ import { dirname, join } from "node:path";
 
 import NodeID3 from "node-id3";
 
-import { VOICES } from "./constants";
+import { config } from "./config";
 import { apiKeyFromEnv, ElevenLabsError, synthesize, ttsBody } from "./elevenlabs";
 import * as sm from "./scriptmodel";
 
 const TAG_ARTIST = "SUB/WAVE Documentaries";
-const DEFAULT_MODEL = "eleven_flash_v2_5";
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
 
@@ -121,10 +120,12 @@ export interface RenderOptions {
 export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}): Promise<RenderResult> {
   const ep = sm.loadEpisode(scriptPath);
   const host = String(ep.frontMatter.host);
-  const voice = VOICES[host];
-  if (!voice) throw new ElevenLabsError(`unknown host '${host}' (expected ${Object.keys(VOICES).join(" | ")})`);
+  const voice = config.voices[host];
+  if (!voice) {
+    throw new ElevenLabsError(`no voice configured for host '${host}' — add [voices.${host}] to settings.toml`);
+  }
   const modelId =
-    opts.model ?? (typeof ep.frontMatter.model === "string" ? ep.frontMatter.model : DEFAULT_MODEL);
+    opts.model ?? (typeof ep.frontMatter.model === "string" ? ep.frontMatter.model : config.elevenlabs.model);
 
   const plan = planEpisode(ep);
   const albumTag = `S${pad2(plan.season)}E${pad2(plan.episode)} — ${ep.frontMatter.album} (Making Of)`;

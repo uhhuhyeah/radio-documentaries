@@ -9,10 +9,11 @@
 
 import { createAgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 
+import { config } from "../config";
 import { documentaryTools } from "../tools/index";
 import { PRODUCER_SYSTEM } from "./system-prompts";
 
-const MODEL_ID = process.env.DOCS_LLM_MODEL ?? "qwen/qwen3-235b-a22b-2507";
+const MODEL_ID = config.models.producer;
 
 export async function runProducer(trigger: string): Promise<void> {
   const modelRuntime = await ModelRuntime.create();

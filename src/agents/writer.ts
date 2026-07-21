@@ -4,6 +4,7 @@
  * the research it is given. The Producer lints the output before it is rendered.
  */
 
+import { config } from "../config";
 import { PERSONAS } from "../constants";
 import { complete } from "../llm";
 import * as sm from "../scriptmodel";
@@ -46,7 +47,7 @@ export async function writeScript(input: WriterInput): Promise<string> {
     `  artist: ${JSON.stringify(input.artist)}`,
     `  host: ${input.host}`,
     `  host_name: ${JSON.stringify(input.hostName)}`,
-    `  model: ${input.model ?? "eleven_flash_v2_5"}`,
+    `  model: ${input.model ?? config.elevenlabs.model}`,
     `  target_minutes: ${input.targetMinutes ?? 25}`,
     `  reference_tracks: ${input.referenceTracks ?? 2}`,
     ``,

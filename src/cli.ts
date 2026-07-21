@@ -239,8 +239,10 @@ async function main(): Promise<number> {
     }
     const maxArg = flag([...rest], "max-spoken");
     try {
+      const skipArg = flag([...rest], "skip-spoken");
       const r = await renderEpisode(sub, {
         maxSpoken: maxArg ? parseInt(maxArg, 10) : undefined,
+        skipSpoken: skipArg ? parseInt(skipArg, 10) : undefined,
         model: flag([...rest], "model"),
         onlyLabel: flag([...rest], "only"),
         audioDir: flag([...rest], "audio-dir"),

@@ -111,6 +111,8 @@ export interface RenderOptions {
   audioDir?: string;
   /** Render only the first N spoken segments (cheap sample). Omit for the full episode. */
   maxSpoken?: number;
+  /** Skip the first N spoken segments (already rendered); still writes the full rundown. */
+  skipSpoken?: number;
   /** Override the ElevenLabs model (else the front-matter model). For A/B comparison. */
   model?: string;
   /** Render only the spoken slot with this label (e.g. "part-1"). For sampling one segment. */
@@ -133,7 +135,9 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
   const audioDir = opts.audioDir ?? join(dirname(scriptPath), "audio");
   mkdirSync(audioDir, { recursive: true });
 
-  let steps = opts.maxSpoken ? plan.steps.slice(0, opts.maxSpoken) : plan.steps;
+  let steps = plan.steps;
+  if (opts.skipSpoken) steps = steps.slice(opts.skipSpoken);
+  if (opts.maxSpoken) steps = steps.slice(0, opts.maxSpoken);
   if (opts.onlyLabel) steps = steps.filter((s) => s.label === opts.onlyLabel);
 
   let prevIndex = -99;

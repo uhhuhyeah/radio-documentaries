@@ -1,4 +1,0 @@
-# Core stages (catalog, lint, budget) use only the Python stdlib.
-# These are needed by the API-touching stages (navidrome, render), built later.
-requests>=2.31
-mutagen>=1.47

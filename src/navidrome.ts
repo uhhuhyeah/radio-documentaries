@@ -169,6 +169,10 @@ export class Subsonic {
     return asList((await this.request("getPlaylists")).playlists?.playlist);
   }
 
+  async getPlaylist(id: string): Promise<any> {
+    return (await this.request("getPlaylist", { id })).playlist ?? {};
+  }
+
   // write (used only by the prompted playlist-build step)
   async startScan(full = false): Promise<any> {
     return (await this.request("startScan", full ? { fullScan: "true" } : {})).scanStatus ?? {};

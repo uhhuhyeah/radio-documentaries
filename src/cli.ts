@@ -193,7 +193,23 @@ async function main(): Promise<number> {
         console.log("scan started:", JSON.stringify(await client.startScan()));
         return 0;
       }
-      console.error("navidrome: expected ping | find-album | album-songs | scan-status | scan");
+      if (sub === "playlists") {
+        for (const p of await client.getPlaylists()) console.log(`${p.id}\t${p.songCount}\t${p.name}`);
+        return 0;
+      }
+      if (sub === "playlist") {
+        const id = flag(rest, "id");
+        if (!id) {
+          console.error("playlist requires --id");
+          return 2;
+        }
+        const pl = await client.getPlaylist(id);
+        for (const [i, e] of (navidrome.asList(pl.entry)).entries()) {
+          console.log(`${String(i + 1).padStart(2)}. ${e.title}  —  ${e.artist}  (album: ${e.album})`);
+        }
+        return 0;
+      }
+      console.error("navidrome: expected ping | find-album | album-songs | scan-status | scan | playlists | playlist");
       return 2;
     } catch (e) {
       console.error(`navidrome error: ${String(e)}`);

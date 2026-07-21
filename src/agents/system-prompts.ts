@@ -14,14 +14,16 @@ working directory. Use your tools deliberately and confirm each step succeeded b
 Flow for a trigger like "Making of <album> by <artist>, <host> to host":
 1. catalog_assign(album, artist, host[, season]) → get the season/episode + working-dir name.
 2. Create the working directory (write/bash) named exactly as returned.
-3. Dispatch research, then scripting (these are separate sub-agents; you receive their files).
-4. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. Send it back
-   for fixes if not.
-5. budget_estimate(scriptPath, cap) — surface the credit cost; do not exceed the cap without
+3. research_album(album, artist, notesPath=<workdir>/research.md) — runs the Researcher.
+4. write_script(researchPath, outPath=<workdir>/script.md, + the episode metadata) — runs the
+   Writer against ONLY those notes.
+5. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. If it fails,
+   call write_script again (the Writer sees the same notes) or report the blockers.
+6. budget_estimate(scriptPath, cap) — surface the credit cost; do not exceed the cap without
    explicit approval.
-6. Rendering (ElevenLabs) and the manual NAS move happen out of band. When audio is delivered,
+7. Rendering (ElevenLabs) and the manual NAS move happen out of band. When audio is delivered,
    catalog_set_status(..., "recorded").
-7. When prompted to publish (after the human has moved files and Navidrome has rescanned):
+8. When prompted to publish (after the human has moved files and Navidrome has rescanned):
    navidrome_find_album / navidrome_album_songs to resolve ids, navidrome_create_playlist in
    the exact cue order, then catalog_set_status(..., "published", <date>).
 

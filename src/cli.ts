@@ -21,6 +21,7 @@ import * as catalog from "./catalog";
 import * as lint from "./lint";
 import * as navidrome from "./navidrome";
 import { songsOfAlbum } from "./navidrome";
+import { webFetchText, webSearch } from "./tools/web";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -160,7 +161,29 @@ async function main(): Promise<number> {
     }
   }
 
-  console.error("usage: catalog | lint | budget | navidrome (see header)");
+  if (cmd === "web-search") {
+    const query = [sub, ...rest].filter(Boolean).join(" ");
+    if (!query) {
+      console.error('web-search requires a query, e.g. pnpm cli web-search "punisher phoebe bridgers making of"');
+      return 2;
+    }
+    const results = await webSearch(query);
+    for (const [i, r] of results.entries()) {
+      console.log(`${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`);
+    }
+    return results.length ? 0 : 1;
+  }
+
+  if (cmd === "web-fetch") {
+    if (!sub) {
+      console.error("web-fetch requires a url");
+      return 2;
+    }
+    console.log((await webFetchText(sub, 1200)) + "\n…");
+    return 0;
+  }
+
+  console.error("usage: catalog | lint | budget | navidrome | web-search | web-fetch (see header)");
   return 2;
 }
 

@@ -14,10 +14,8 @@ import * as budget from "../budget";
 import * as catalog from "../catalog";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum } from "../navidrome";
-
-function result(summary: string, details: unknown) {
-  return { content: [{ type: "text" as const, text: summary }], details };
-}
+import { researchAlbumTool, writeScriptTool } from "./subagents";
+import { toolResult as result } from "./util";
 
 // --- catalog -----------------------------------------------------------------
 
@@ -183,6 +181,8 @@ export const documentaryTools = [
   catalogListTool,
   catalogAssignTool,
   catalogSetStatusTool,
+  researchAlbumTool,
+  writeScriptTool,
   lintScriptTool,
   budgetEstimateTool,
   navidromeFindAlbumTool,

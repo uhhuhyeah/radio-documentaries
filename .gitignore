@@ -9,4 +9,4 @@ dist/
 *.tsbuildinfo
 
 # episode audio outputs (large, regenerable)
-*/audio/
+*/audio*/

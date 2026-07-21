@@ -112,6 +112,10 @@ export interface RenderOptions {
   audioDir?: string;
   /** Render only the first N spoken segments (cheap sample). Omit for the full episode. */
   maxSpoken?: number;
+  /** Override the ElevenLabs model (else the front-matter model). For A/B comparison. */
+  model?: string;
+  /** Render only the spoken slot with this label (e.g. "part-1"). For sampling one segment. */
+  onlyLabel?: string;
 }
 
 export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}): Promise<RenderResult> {
@@ -119,7 +123,8 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
   const host = String(ep.frontMatter.host);
   const voice = VOICES[host];
   if (!voice) throw new ElevenLabsError(`unknown host '${host}' (expected ${Object.keys(VOICES).join(" | ")})`);
-  const modelId = typeof ep.frontMatter.model === "string" ? ep.frontMatter.model : DEFAULT_MODEL;
+  const modelId =
+    opts.model ?? (typeof ep.frontMatter.model === "string" ? ep.frontMatter.model : DEFAULT_MODEL);
 
   const plan = planEpisode(ep);
   const albumTag = `S${pad2(plan.season)}E${pad2(plan.episode)} — ${ep.frontMatter.album} (Making Of)`;
@@ -127,7 +132,8 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
   const audioDir = opts.audioDir ?? join(dirname(scriptPath), "audio");
   mkdirSync(audioDir, { recursive: true });
 
-  const steps = opts.maxSpoken ? plan.steps.slice(0, opts.maxSpoken) : plan.steps;
+  let steps = opts.maxSpoken ? plan.steps.slice(0, opts.maxSpoken) : plan.steps;
+  if (opts.onlyLabel) steps = steps.filter((s) => s.label === opts.onlyLabel);
 
   let prevIndex = -99;
   let prevRequestIds: string[] = [];

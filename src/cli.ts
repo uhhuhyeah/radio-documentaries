@@ -233,7 +233,12 @@ async function main(): Promise<number> {
     }
     const maxArg = flag([...rest], "max-spoken");
     try {
-      const r = await renderEpisode(sub, maxArg ? { maxSpoken: parseInt(maxArg, 10) } : {});
+      const r = await renderEpisode(sub, {
+        maxSpoken: maxArg ? parseInt(maxArg, 10) : undefined,
+        model: flag([...rest], "model"),
+        onlyLabel: flag([...rest], "only"),
+        audioDir: flag([...rest], "audio-dir"),
+      });
       console.log(`rendered ${r.rendered} segment(s) → ${r.audioDir}\ncue → ${r.cuePath}`);
       return 0;
     } catch (e) {

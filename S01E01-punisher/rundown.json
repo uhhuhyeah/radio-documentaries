@@ -21,7 +21,7 @@
       "kind": "SONG",
       "label": "song-1",
       "song": {
-        "title": "Kyoto",
+        "title": "Garden Song",
         "artist": "Phoebe Bridgers",
         "album": "Punisher"
       }
@@ -40,69 +40,51 @@
     },
     {
       "index": 6,
-      "kind": "SPOKEN",
-      "label": "part-4",
-      "file": "s01e01_06_part-4.mp3"
+      "kind": "SONG",
+      "label": "song-2",
+      "song": {
+        "title": "Halloween",
+        "artist": "Phoebe Bridgers",
+        "album": "Punisher"
+      }
     },
     {
       "index": 7,
       "kind": "SPOKEN",
-      "label": "part-5",
-      "file": "s01e01_07_part-5.mp3"
+      "label": "part-4",
+      "file": "s01e01_07_part-4.mp3"
     },
     {
       "index": 8,
-      "kind": "SPOKEN",
-      "label": "part-6",
-      "file": "s01e01_08_part-6.mp3"
+      "kind": "SONG",
+      "label": "song-3",
+      "song": {
+        "title": "I Know the End",
+        "artist": "Phoebe Bridgers",
+        "album": "Punisher"
+      }
     },
     {
       "index": 9,
       "kind": "SPOKEN",
-      "label": "part-7",
-      "file": "s01e01_09_part-7.mp3"
+      "label": "part-5",
+      "file": "s01e01_09_part-5.mp3"
     },
     {
       "index": 10,
-      "kind": "SPOKEN",
-      "label": "part-8",
-      "file": "s01e01_10_part-8.mp3"
+      "kind": "SONG",
+      "label": "song-4",
+      "song": {
+        "title": "Punisher",
+        "artist": "Phoebe Bridgers",
+        "album": "Punisher"
+      }
     },
     {
       "index": 11,
       "kind": "SPOKEN",
-      "label": "part-9",
-      "file": "s01e01_11_part-9.mp3"
-    },
-    {
-      "index": 12,
-      "kind": "SPOKEN",
-      "label": "part-10",
-      "file": "s01e01_12_part-10.mp3"
-    },
-    {
-      "index": 13,
-      "kind": "SPOKEN",
-      "label": "part-11",
-      "file": "s01e01_13_part-11.mp3"
-    },
-    {
-      "index": 14,
-      "kind": "SPOKEN",
-      "label": "part-12",
-      "file": "s01e01_14_part-12.mp3"
-    },
-    {
-      "index": 15,
-      "kind": "SPOKEN",
-      "label": "part-13",
-      "file": "s01e01_15_part-13.mp3"
-    },
-    {
-      "index": 16,
-      "kind": "SPOKEN",
       "label": "conclusion",
-      "file": "s01e01_16_conclusion.mp3"
+      "file": "s01e01_11_conclusion.mp3"
     }
   ]
 }

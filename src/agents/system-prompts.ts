@@ -39,6 +39,11 @@ is a show hosted BY that persona, not a neutral narrator. Use ONLY the research 
 facts. Never invent facts, quotes, dates, or personnel — if the research doesn't contain something,
 write around it. (Voice and facts are separate: be fully in-character, but never fabricate.)
 
+LYRICS — CRITICAL: You may quote song lyrics, but ONLY verbatim from the research's "Track Lyrics"
+section. A quoted lyric MUST match those lyrics word-for-word. NEVER invent, paraphrase, or
+approximate a lyric — hallucinated lyrics are the worst failure here. If a song's lyrics aren't in
+the research, do NOT put words in quotation marks as if they were sung; describe the song instead.
+
 Output ONLY the script — nothing before or after it. Follow this format EXACTLY:
 
 1. FRONT MATTER: the very first line is "---" on its own, then the flat YAML keys, then a closing

@@ -14,6 +14,8 @@ import { writeFileSync } from "node:fs";
 
 import { config } from "../config";
 import { complete } from "../llm";
+import { clientFromEnv, songsOfAlbum } from "../navidrome";
+import { fetchLyrics } from "../tools/lyrics";
 import { type SearchResult, webFetchText, webSearch } from "../tools/web";
 import { RESEARCHER_SYSTEM } from "./system-prompts";
 
@@ -24,6 +26,39 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 const RESEARCH_MODEL = config.models.research;
 const MAX_PAGES = 5;
 const PAGE_CHARS = 5000;
+
+/**
+ * Verbatim lyrics for the album's tracks (from LRCLIB), appended to the notes so
+ * the Writer can quote real lyrics instead of inventing them. Track list comes
+ * from Navidrome (the actual library album). Best-effort — returns "" on failure.
+ */
+async function gatherLyrics(album: string, artist: string): Promise<string> {
+  try {
+    const client = clientFromEnv();
+    const alb = await client.findAlbum(album, artist);
+    if (!alb) return "";
+    const tracks = songsOfAlbum(await client.getAlbum(alb.id));
+    const blocks: string[] = [];
+    for (const t of tracks) {
+      const title = String(t.title ?? "").trim();
+      if (!title) continue;
+      const lyr = await fetchLyrics(artist, title, album);
+      if (lyr) blocks.push(`### ${title}\n\n${lyr}`);
+      await delay(400);
+    }
+    process.stderr.write(`[researcher] lyrics: ${blocks.length}/${tracks.length} tracks\n`);
+    if (!blocks.length) return "";
+    return (
+      "\n\n## Track Lyrics (VERBATIM — the ONLY source for quoting lyrics)\n\n" +
+      "These are the actual lyrics. If the host quotes a lyric it MUST match one of these " +
+      "word-for-word; never invent, paraphrase, or approximate a lyric.\n\n" +
+      blocks.join("\n\n---\n\n")
+    );
+  } catch (e) {
+    process.stderr.write(`[researcher] lyrics gather failed: ${String(e)}\n`);
+    return "";
+  }
+}
 
 export async function researchAlbum(
   album: string,
@@ -91,5 +126,8 @@ export async function researchAlbum(
 
   const notes = await complete(RESEARCHER_SYSTEM, user, RESEARCH_MODEL);
   if (!notes.trim()) throw new Error("researcher synthesis produced no notes");
-  writeFileSync(notesPath, notes, "utf-8");
+
+  // Append a verbatim lyrics bank (kept out of the LLM synthesis so it stays exact).
+  const lyrics = await gatherLyrics(album, artist);
+  writeFileSync(notesPath, notes + lyrics, "utf-8");
 }

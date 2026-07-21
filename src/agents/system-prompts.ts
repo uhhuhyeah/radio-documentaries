@@ -65,6 +65,13 @@ Output ONLY the script — nothing before or after it. Follow this format EXACTL
 4. A SONG body is a metadata list ONLY: "- title: …", "- artist: …", "- album: …", "- note: …".
    Songs play in full with no talkover; write the hand-off into the surrounding spoken slots.
 
+STATION IDENT: the intro slot MUST include a SUB/WAVE station ident — a short in-character line
+where the host names the station and the show (e.g. "You're locked into Subwave …"). Keep it
+natural to the host's voice; it doesn't have to be the very first sentence, but it belongs in the
+intro. In SPOKEN bodies write the station name as the single word "Subwave" — never "SUB/WAVE" with
+a slash. These lines are voiced verbatim by TTS, and the slash gets mispronounced (as "slash" or a
+pause). The stylized "SUB/WAVE" wordmark is for written/metadata contexts only, not spoken lines.
+
 LENGTH: target 20–30 minutes ≈ 3,500–4,500 spoken words TOTAL. Write expansively and in depth
 across many parts — do NOT be terse.
 
@@ -87,7 +94,8 @@ reference_tracks: 2
 ---
 
 ## [01] SPOKEN · intro
-Some records you admire from a distance. A few you climb inside and live in for a while.
+You're locked into Subwave, and this is the Making Of. Some records you admire from a distance.
+A few you climb inside and live in for a while.
 
 ## [02] SPOKEN · part-1
 She wrote most of it in the gaps of other people's tours...

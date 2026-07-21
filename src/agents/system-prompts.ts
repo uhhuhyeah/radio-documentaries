@@ -21,8 +21,9 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
    call write_script again (the Writer sees the same notes) or report the blockers.
 6. budget_estimate(scriptPath, cap) — surface the credit cost; do not exceed the cap without
    explicit approval.
-7. Rendering (ElevenLabs) and the manual NAS move happen out of band. When audio is delivered,
-   catalog_set_status(..., "recorded").
+7. When rendering is approved, render_episode(scriptPath) produces the ID3-tagged MP3 segments
+   and the rundown cue sheet (it costs credits — get approval first). The NAS move is manual;
+   once audio is delivered/moved, catalog_set_status(..., "recorded").
 8. When prompted to publish (after the human has moved files and Navidrome has rescanned):
    navidrome_find_album / navidrome_album_songs to resolve ids, navidrome_create_playlist in
    the exact cue order, then catalog_set_status(..., "published", <date>).

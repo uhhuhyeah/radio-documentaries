@@ -21,6 +21,7 @@ import * as catalog from "./catalog";
 import * as lint from "./lint";
 import * as navidrome from "./navidrome";
 import { songsOfAlbum } from "./navidrome";
+import { renderEpisode } from "./render";
 import { webFetchText, webSearch } from "./tools/web";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -161,6 +162,21 @@ async function main(): Promise<number> {
     }
   }
 
+  if (cmd === "render") {
+    if (!sub) {
+      console.error("render requires a script path");
+      return 2;
+    }
+    try {
+      const r = await renderEpisode(sub);
+      console.log(`rendered ${r.rendered} segment(s) → ${r.audioDir}\ncue → ${r.cuePath}`);
+      return 0;
+    } catch (e) {
+      console.error(`render error: ${String(e)}`);
+      return 1;
+    }
+  }
+
   if (cmd === "web-search") {
     const query = [sub, ...rest].filter(Boolean).join(" ");
     if (!query) {
@@ -183,7 +199,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  console.error("usage: catalog | lint | budget | navidrome | web-search | web-fetch (see header)");
+  console.error("usage: catalog | lint | budget | render | navidrome | web-search | web-fetch (see header)");
   return 2;
 }
 

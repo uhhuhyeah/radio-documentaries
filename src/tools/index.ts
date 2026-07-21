@@ -14,6 +14,7 @@ import * as budget from "../budget";
 import * as catalog from "../catalog";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum } from "../navidrome";
+import { renderEpisode } from "../render";
 import { researchAlbumTool, writeScriptTool } from "./subagents";
 import { toolResult as result } from "./util";
 
@@ -124,6 +125,21 @@ export const budgetEstimateTool = defineTool({
   },
 });
 
+// --- render (network; needs the ElevenLabs key) ------------------------------
+
+export const renderEpisodeTool = defineTool({
+  name: "render_episode",
+  label: "Render episode",
+  description:
+    "Render a script.md to ID3-tagged MP3 segments via ElevenLabs and write the rundown cue sheet. " +
+    "Costs credits — only call when approved. Needs ELEVENLABS_API_KEY.",
+  parameters: Type.Object({ scriptPath: Type.String() }),
+  execute: async (_id, params) => {
+    const r = await renderEpisode(params.scriptPath);
+    return result(`rendered ${r.rendered} segment(s) → ${r.audioDir}; cue → ${r.cuePath}`, r);
+  },
+});
+
 // --- navidrome (network; used in the publish step) ---------------------------
 
 export const navidromeFindAlbumTool = defineTool({
@@ -185,6 +201,7 @@ export const documentaryTools = [
   writeScriptTool,
   lintScriptTool,
   budgetEstimateTool,
+  renderEpisodeTool,
   navidromeFindAlbumTool,
   navidromeAlbumSongsTool,
   navidromeScanStatusTool,

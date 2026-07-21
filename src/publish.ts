@@ -41,13 +41,30 @@ export async function publishEpisode(rundownPath: string, playlistName?: string)
       if (!id) throw new Error(`segment '${c.label}' (index ${c.index}) not found in the scanned episode album`);
       orderedIds.push(id);
     } else {
-      const song = await client.findSong(String(c.song?.title), c.song?.album, c.song?.artist);
+      let song = await client.findSong(String(c.song?.title), c.song?.album, c.song?.artist);
+      if (!song && c.song?.album) {
+        // Fuzzy fallback: match within the source album by substring (handles mis-tagged
+        // titles like Navidrome's "DVD Menu-Garden Song" vs the script's "Garden Song").
+        const srcAlb = await client.findAlbum(String(c.song.album), c.song.artist);
+        if (srcAlb) {
+          const want = String(c.song.title).toLowerCase();
+          song =
+            songsOfAlbum(await client.getAlbum(srcAlb.id)).find((s) => {
+              const have = String(s.title).toLowerCase();
+              return have === want || have.includes(want) || want.includes(have);
+            }) ?? null;
+        }
+      }
       if (!song) throw new Error(`reference track '${c.song?.title}' not found in Navidrome`);
       orderedIds.push(song.id);
     }
   }
 
   const name = playlistName ?? `SUB/WAVE Docs · ${rundown.album}`;
+  // Republish is idempotent: drop any existing playlist of the same name first.
+  for (const p of await client.getPlaylists()) {
+    if (p?.name === name && p?.id) await client.deletePlaylist(String(p.id));
+  }
   const pl = await client.createPlaylist(name, orderedIds);
   return { playlistName: name, count: orderedIds.length, playlistId: pl?.id };
 }

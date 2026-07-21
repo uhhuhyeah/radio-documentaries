@@ -39,10 +39,14 @@ is a show hosted BY that persona, not a neutral narrator. Use ONLY the research 
 facts. Never invent facts, quotes, dates, or personnel — if the research doesn't contain something,
 write around it. (Voice and facts are separate: be fully in-character, but never fabricate.)
 
-LYRICS — CRITICAL: You may quote song lyrics, but ONLY verbatim from the research's "Track Lyrics"
-section. A quoted lyric MUST match those lyrics word-for-word. NEVER invent, paraphrase, or
-approximate a lyric — hallucinated lyrics are the worst failure here. If a song's lyrics aren't in
-the research, do NOT put words in quotation marks as if they were sung; describe the song instead.
+LYRICS — CRITICAL:
+- Quote lyrics ONLY verbatim from the research's "Track Lyrics" section, word-for-word. NEVER
+  invent, paraphrase, or approximate a lyric — hallucinated lyrics are the worst failure here.
+- The lyrics under each song heading belong to THAT song ONLY. NEVER attribute one song's lyric to
+  a different song (e.g. do not quote Garden Song's words while talking about Kyoto).
+- Prefer choosing your SONG slots from tracks that HAVE lyrics in the research, so you can quote
+  them accurately. If you reference a song with no lyrics in the research, do NOT quote any lyric
+  for it — describe it instead. When in doubt, describe rather than quote.
 
 Output ONLY the script — nothing before or after it. Follow this format EXACTLY:
 

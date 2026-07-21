@@ -182,6 +182,10 @@ export class Subsonic {
     // Navidrome preserves the submitted songId order.
     return (await this.request("createPlaylist", { name, songId: songIds })).playlist ?? {};
   }
+
+  async deletePlaylist(id: string): Promise<void> {
+    await this.request("deletePlaylist", { id });
+  }
 }
 
 export function clientFromEnv(dotenvPath?: string): Subsonic {

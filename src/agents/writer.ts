@@ -38,7 +38,20 @@ export interface WriterInput {
   research: string; // the Researcher's notes (the only source of facts)
 }
 
+/** Songs that have verbatim lyrics in the research's "Track Lyrics" section. */
+function songsWithLyrics(research: string): string[] {
+  const idx = research.indexOf("## Track Lyrics");
+  if (idx === -1) return [];
+  return [...research.slice(idx).matchAll(/^### (.+)$/gm)].map((m) => m[1]!.trim());
+}
+
 export async function writeScript(input: WriterInput): Promise<string> {
+  const withLyrics = songsWithLyrics(input.research);
+  const lyricsGuide = withLyrics.length
+    ? `You have VERBATIM lyrics for these tracks: ${withLyrics.join(", ")}. Choose your SONG slots ` +
+      `from these so you can quote accurately, and quote each song ONLY its own lyrics (never ` +
+      `attribute one song's words to another). For any other song, describe it — do NOT quote lyrics.`
+    : `No track lyrics are in the research — do NOT quote any song lyrics; describe the songs instead.`;
   const user = [
     `Episode metadata (use these exact values in the front matter):`,
     `  season: ${input.season}`,
@@ -55,6 +68,7 @@ export async function writeScript(input: WriterInput): Promise<string> {
     ``,
     `Interleave 3–5 songs from this album as SONG slots, SPREAD THROUGHOUT (radio-show style:`,
     `spoken → song → spoken → song …), each with a natural hand-off in the surrounding spoken parts.`,
+    lyricsGuide,
     `Emit BARE --- front matter (never a \`\`\`yaml fence),`,
     `KEBAB-CASE slot labels, and NO markdown in spoken bodies.`,
     `Write the FULL ${input.targetMinutes ?? 25}-minute script now: aim for ~4,000 spoken words total across`,

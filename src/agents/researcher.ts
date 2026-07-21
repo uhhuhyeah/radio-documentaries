@@ -18,8 +18,12 @@ import { RESEARCHER_SYSTEM } from "./system-prompts";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-const MAX_PAGES = 6;
-const PAGE_CHARS = 6000;
+// Research synthesis is factual organisation, not on-air patter — a faster model
+// than the DJ's qwen3-235b is the right tool (this one is the station's prior DJ,
+// MoE 30B/3B-active, much faster; override with DOCS_RESEARCH_MODEL).
+const RESEARCH_MODEL = process.env.DOCS_RESEARCH_MODEL ?? "qwen/qwen3-30b-a3b-instruct-2507";
+const MAX_PAGES = 5;
+const PAGE_CHARS = 5000;
 
 export async function researchAlbum(
   album: string,
@@ -85,7 +89,7 @@ export async function researchAlbum(
     .filter(Boolean)
     .join("\n");
 
-  const notes = await complete(RESEARCHER_SYSTEM, user);
+  const notes = await complete(RESEARCHER_SYSTEM, user, RESEARCH_MODEL);
   if (!notes.trim()) throw new Error("researcher synthesis produced no notes");
   writeFileSync(notesPath, notes, "utf-8");
 }

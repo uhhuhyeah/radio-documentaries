@@ -23,6 +23,20 @@ const TAG_ARTIST = "SUB/WAVE Documentaries";
 const DEFAULT_MODEL = "eleven_flash_v2_5";
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/**
+ * Strip markdown that would be read aloud (LLMs emit *emphasis*, links, etc. even
+ * when told not to). Belt to the writer-prompt's suspenders — the TTS gets clean text.
+ */
+export function sanitizeForTts(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) -> text
+    .replace(/[*`]/g, "") // * ** ` emphasis/code
+    .replace(/(^|[\s(])_([^_\n]+)_(?=[\s.,!?;:)]|$)/g, "$1$2") // _emphasis_ -> emphasis
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "") // stray headings
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
 const asNum = (v: unknown, field: string): number => {
   if (typeof v !== "number") throw new ElevenLabsError(`front matter '${field}' must be a number`);
   return v;
@@ -117,9 +131,9 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
 
   for (const step of plan.steps) {
     const adjacent = step.index === prevIndex + 1; // contiguous index ⟹ no song between
-    const body = ttsBody(step.text, modelId, voice.speed, {
-      previousText: step.prevText,
-      nextText: step.nextText,
+    const body = ttsBody(sanitizeForTts(step.text), modelId, voice.speed, {
+      previousText: step.prevText ? sanitizeForTts(step.prevText) : undefined,
+      nextText: step.nextText ? sanitizeForTts(step.nextText) : undefined,
       previousRequestIds: adjacent ? prevRequestIds : [],
     });
     const { audio, requestId } = await synthesize(voice.voiceId, body, apiKey);

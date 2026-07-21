@@ -70,7 +70,7 @@ export async function webSearch(query: string, max = 8): Promise<SearchResult[]>
 }
 
 export async function webFetchText(url: string, maxChars = 8000): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
+  const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12000) });
   const text = htmlToText(await res.text());
   return text.length > maxChars ? text.slice(0, maxChars) + "\n…[truncated]" : text;
 }

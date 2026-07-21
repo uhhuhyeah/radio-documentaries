@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { ttsBody, ttsUrl, voiceSettings } from "./elevenlabs";
-import { planEpisode } from "./render";
+import { planEpisode, sanitizeForTts } from "./render";
 import * as sm from "./scriptmodel";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
@@ -42,6 +42,21 @@ describe("planEpisode", () => {
     expect(song.song?.title).toBe("Kyoto");
     expect(song.file).toBeUndefined();
     expect(plan.cue[0]!.file).toBe("s01e01_01_intro.mp3");
+  });
+});
+
+describe("sanitizeForTts", () => {
+  it("strips emphasis and code markers", () => {
+    expect(sanitizeForTts("It's *Punisher*, her `second` album")).toBe("It's Punisher, her second album");
+  });
+  it("unwraps markdown links to their text", () => {
+    expect(sanitizeForTts("see [Sound City](https://x.com) studios")).toBe("see Sound City studios");
+  });
+  it("strips underscore emphasis but keeps normal prose", () => {
+    expect(sanitizeForTts("a _quiet_ record")).toBe("a quiet record");
+  });
+  it("leaves clean prose untouched", () => {
+    expect(sanitizeForTts("Just clean words here.")).toBe("Just clean words here.");
   });
 });
 

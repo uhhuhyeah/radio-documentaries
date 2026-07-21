@@ -267,4 +267,9 @@ async function main(): Promise<number> {
   return 2;
 }
 
-main().then((code) => process.exit(code));
+main()
+  .then((code) => process.exit(code))
+  .catch((e) => {
+    console.error(String(e instanceof Error ? e.message : e));
+    process.exit(1);
+  });

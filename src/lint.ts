@@ -78,6 +78,9 @@ export function lintText(text: string): Finding[] {
     }
     if (s.kind === "SPOKEN") {
       if (s.body.trim() === "") err(`slot ${pad2(s.index)} (${s.label}): SPOKEN body is empty`);
+      if (/[*`]|\]\([^)]*\)/.test(s.body)) {
+        warn(`slot ${pad2(s.index)} (${s.label}): SPOKEN body has markdown (stripped at render; prefer clean prose)`);
+      }
     } else {
       if (!("title" in s.meta)) err(`slot ${pad2(s.index)} (${s.label}): SONG missing 'title'`);
       for (const opt of ["artist", "album"]) {

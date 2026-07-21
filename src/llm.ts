@@ -9,11 +9,19 @@ import { createModels, type AssistantMessage, type Context } from "@earendil-wor
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 
 export const DEFAULT_MODEL = process.env.DOCS_LLM_MODEL ?? "qwen/qwen3-235b-a22b-2507";
+const TIMEOUT_MS = Number(process.env.DOCS_LLM_TIMEOUT_MS ?? 300_000);
 
 export function makeModels() {
   const models = createModels();
   models.setProvider(openrouterProvider());
   return models;
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
 }
 
 function extractText(reply: AssistantMessage): string {
@@ -35,5 +43,5 @@ export async function complete(systemPrompt: string, user: string, modelId: stri
     systemPrompt,
     messages: [{ role: "user", content: user, timestamp: Date.now() }],
   };
-  return extractText(await models.complete(model, context));
+  return extractText(await withTimeout(models.complete(model, context), TIMEOUT_MS, "LLM completion"));
 }

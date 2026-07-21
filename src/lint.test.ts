@@ -84,4 +84,12 @@ describe("individual rules", () => {
   it("clean minimal script passes", () => {
     expect(errors(lint.lintText(script()))).toEqual([]);
   });
+
+  it("markdown in a spoken body warns, not errors", () => {
+    const f = lint.lintText(script(DEFAULT_FRONT,
+      "## [01] SPOKEN · intro\nShe made *Punisher* at Sound City.\n" +
+      '## [02] SONG · song-1\n- title: "X"\n- artist: "Y"\n- album: "Z"\n'));
+    expect(has(f, "WARN", "has markdown")).toBe(true);
+    expect(errors(f)).toEqual([]);
+  });
 });

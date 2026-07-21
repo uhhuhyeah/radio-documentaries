@@ -5,7 +5,13 @@
  * Needs LLM auth (OPENROUTER_API_KEY / ~/.pi/agent).
  */
 
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { runProducer } from "./agents/producer";
+import { loadDotenv } from "./navidrome";
+
+loadDotenv(join(dirname(fileURLToPath(import.meta.url)), "..", ".env")); // .env → process.env
 
 const trigger = process.argv.slice(2).join(" ").trim();
 if (!trigger) {

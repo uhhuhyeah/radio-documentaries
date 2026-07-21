@@ -19,8 +19,9 @@ import { fileURLToPath } from "node:url";
 import * as budget from "./budget";
 import * as catalog from "./catalog";
 import * as lint from "./lint";
+import { complete } from "./llm";
 import * as navidrome from "./navidrome";
-import { songsOfAlbum } from "./navidrome";
+import { loadDotenv, songsOfAlbum } from "./navidrome";
 import { renderEpisode } from "./render";
 import { webFetchText, webSearch } from "./tools/web";
 
@@ -32,7 +33,20 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 async function main(): Promise<number> {
+  loadDotenv(join(REPO_ROOT, ".env")); // make .env keys available to every command
   const [cmd, sub, ...rest] = process.argv.slice(2);
+
+  if (cmd === "llm-check") {
+    const model = process.env.DOCS_LLM_MODEL ?? "qwen/qwen3-235b-a22b-2507";
+    try {
+      const reply = await complete("You are terse.", "Reply with exactly: OK");
+      console.log(`llm-check (openrouter/${model}): ${reply.trim() || "(empty)"}`);
+      return 0;
+    } catch (e) {
+      console.error(`llm-check failed: ${String(e)}`);
+      return 1;
+    }
+  }
 
   if (cmd === "catalog") {
     const file = flag(rest, "file");

@@ -1,18 +1,25 @@
 /**
- * Researcher sub-agent — a Pi agent with web tools that deep-researches an
- * album's making-of and writes organised notes to a file. The Writer later uses
- * ONLY those notes, so the Researcher must be exhaustive and factual.
+ * Researcher — deterministic gather → synthesize (not an autonomous agent loop).
  *
- * Runs as an "agent-as-tool": the Producer invokes it via the research_album
- * tool. Needs LLM auth (OpenRouter).
+ * A first attempt used a Pi agent free to search/fetch at will; it fired 20 blind
+ * searches, never fetched a page, and tripped DuckDuckGo's block. This version is
+ * predictable: a few targeted (Brave) searches → fetch the top unique pages →
+ * one LLM synthesis over the actual page text. Reliable, cheap, polite.
+ *
+ * Exposed to the Producer via the research_album tool. Needs BRAVE_API_KEY (search)
+ * and OPENROUTER_API_KEY (synthesis).
  */
 
-import { createAgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { writeFileSync } from "node:fs";
 
-import { webFetchTool, webSearchTool } from "../tools/web";
+import { complete } from "../llm";
+import { type SearchResult, webFetchText, webSearch } from "../tools/web";
 import { RESEARCHER_SYSTEM } from "./system-prompts";
 
-const MODEL_ID = process.env.DOCS_LLM_MODEL ?? "qwen/qwen3-235b-a22b-2507";
+const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+const MAX_PAGES = 6;
+const PAGE_CHARS = 6000;
 
 export async function researchAlbum(
   album: string,
@@ -20,31 +27,65 @@ export async function researchAlbum(
   notesPath: string,
   focus?: string,
 ): Promise<void> {
-  const modelRuntime = await ModelRuntime.create();
-  const model = modelRuntime.getModel("openrouter", MODEL_ID);
-  if (!model) {
-    throw new Error(`model not found: openrouter/${MODEL_ID} (is OPENROUTER_API_KEY set?)`);
+  const queries = [
+    `${album} ${artist} album making of recording`,
+    `${album} ${artist} producer studio recording process`,
+    `${album} ${artist} gear instruments equipment`,
+    `${album} ${artist} interview songwriting recording`,
+  ];
+  if (focus) queries.push(`${album} ${artist} ${focus}`);
+
+  // Gather unique results across a few spaced searches.
+  const seen = new Set<string>();
+  const hits: SearchResult[] = [];
+  for (const q of queries) {
+    try {
+      for (const r of await webSearch(q, 6)) {
+        if (r.url && !seen.has(r.url)) {
+          seen.add(r.url);
+          hits.push(r);
+        }
+      }
+    } catch (e) {
+      process.stderr.write(`[researcher] search failed (${q}): ${String(e)}\n`);
+    }
+    await delay(1200);
   }
+  process.stderr.write(`[researcher] ${hits.length} unique results from ${queries.length} queries\n`);
+  if (!hits.length) throw new Error("researcher found no search results (is BRAVE_API_KEY set/valid?)");
 
-  const { session } = await createAgentSession({
-    model,
-    modelRuntime,
-    sessionManager: SessionManager.inMemory(),
-    customTools: [webSearchTool, webFetchTool],
-    tools: ["write", "web_search", "web_fetch"],
-  });
+  // Fetch the top pages (polite, spaced) as source text.
+  const sources: string[] = [];
+  for (const h of hits.slice(0, MAX_PAGES)) {
+    try {
+      const text = await webFetchText(h.url, PAGE_CHARS);
+      sources.push(`### SOURCE: ${h.title}\nURL: ${h.url}\n\n${text}`);
+    } catch (e) {
+      process.stderr.write(`[researcher] fetch failed (${h.url}): ${String(e)}\n`);
+    }
+    await delay(1000);
+  }
+  process.stderr.write(`[researcher] fetched ${sources.length} page(s)\n`);
+  if (!sources.length) throw new Error("researcher gathered no source pages");
 
-  const task = [
-    RESEARCHER_SYSTEM,
-    "",
-    `Research the making of "${album}" by ${artist}.`,
+  // Synthesize exhaustive notes from ONLY the gathered sources.
+  const user = [
+    `Album: "${album}" by ${artist}.`,
     focus ? `Focus especially on: ${focus}.` : "",
     "",
-    "Use web_search to find sources, then web_fetch to read the promising ones. Cross-check.",
-    `When done, use the write tool to save your organised markdown notes to exactly this path: ${notesPath}`,
+    "Synthesize EXHAUSTIVE, organised making-of research notes in markdown from the sources below.",
+    "Use ONLY these sources; do not fabricate. Where sources disagree or are silent, say so.",
+    "Cover: writing process; personnel (producers, engineers, session players); studios; gear and",
+    "the recording chain; timeline; notable anecdotes; and scene/era context. Be specific and thorough —",
+    "the Script Writer will use ONLY your notes.",
+    "",
+    "--- SOURCES ---",
+    sources.join("\n\n---\n\n"),
   ]
     .filter(Boolean)
     .join("\n");
 
-  await session.prompt(task);
+  const notes = await complete(RESEARCHER_SYSTEM, user);
+  if (!notes.trim()) throw new Error("researcher synthesis produced no notes");
+  writeFileSync(notesPath, notes, "utf-8");
 }

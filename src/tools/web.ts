@@ -1,10 +1,10 @@
 /**
- * Web search + fetch for the Researcher agent — no API key.
+ * Web search + fetch for the Researcher.
  *
- * Search scrapes DuckDuckGo's HTML endpoint (html.duckduckgo.com/html/); fetch
- * pulls a page and reduces it to plain text. The HTML parsing is split into pure
- * functions so it's unit-tested without the network (the scrape markup is
- * brittle — if DDG changes it, `parseDdgResults` is where to fix it).
+ * Search uses the **Brave Search API** (needs BRAVE_API_KEY; free tier) — a real
+ * API built for automation, so no scraping / IP-block games. Fetch pulls a page
+ * and reduces it to plain text. Response parsing is split into pure functions
+ * so it's unit-tested without the network.
  */
 
 import { Type } from "typebox";
@@ -41,37 +41,32 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-/** DDG result links are redirects (…/l/?uddg=<encoded target>). Unwrap them. */
-export function decodeDdgHref(href: string): string {
-  const m = href.match(/[?&]uddg=([^&]+)/);
-  if (m) return decodeURIComponent(m[1]!);
-  if (href.startsWith("//")) return "https:" + href;
-  return href;
-}
-
-export function parseDdgResults(html: string, max = 8): SearchResult[] {
-  const snippetRe = /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-  const snippets: string[] = [];
-  let sm: RegExpExecArray | null;
-  while ((sm = snippetRe.exec(html))) snippets.push(htmlToText(sm[1]!));
-
-  const anchorRe = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-  const out: SearchResult[] = [];
-  let m: RegExpExecArray | null;
-  let i = 0;
-  while ((m = anchorRe.exec(html)) && out.length < max) {
-    out.push({ url: decodeDdgHref(m[1]!), title: htmlToText(m[2]!), snippet: snippets[i] ?? "" });
-    i++;
-  }
-  return out;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export function parseBraveResults(json: any, max = 8): SearchResult[] {
+  const results = json?.web?.results;
+  if (!Array.isArray(results)) return [];
+  return results.slice(0, max).map((r: any) => ({
+    title: htmlToText(String(r?.title ?? "")),
+    url: String(r?.url ?? ""),
+    snippet: htmlToText(String(r?.description ?? "")),
+  }));
 }
 
 // --- network -----------------------------------------------------------------
 
 export async function webSearch(query: string, max = 8): Promise<SearchResult[]> {
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15000) });
-  return parseDdgResults(await res.text(), max);
+  const key = process.env.BRAVE_API_KEY;
+  if (!key) throw new Error("BRAVE_API_KEY not set (see .env.example)");
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${max}`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": key },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Brave search ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  return parseBraveResults(await res.json(), max);
 }
 
 export async function webFetchText(url: string, maxChars = 8000): Promise<string> {
@@ -85,7 +80,7 @@ export async function webFetchText(url: string, maxChars = 8000): Promise<string
 export const webSearchTool = defineTool({
   name: "web_search",
   label: "Web search",
-  description: "Search the web (DuckDuckGo) and return titles, URLs, and snippets.",
+  description: "Search the web (Brave Search API) and return titles, URLs, and snippets.",
   parameters: Type.Object({
     query: Type.String(),
     max: Type.Optional(Type.Integer({ description: "Max results (default 8)." })),

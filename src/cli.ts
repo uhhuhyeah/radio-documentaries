@@ -13,9 +13,12 @@
  * Pi tools (see src/tools/). This CLI is for humans and smoke-testing.
  */
 
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { researchAlbum } from "./agents/researcher";
+import { writeScript } from "./agents/writer";
 import * as budget from "./budget";
 import * as catalog from "./catalog";
 import * as lint from "./lint";
@@ -174,6 +177,53 @@ async function main(): Promise<number> {
       console.error(`navidrome error: ${String(e)}`);
       return 1;
     }
+  }
+
+  if (cmd === "research") {
+    const a = [sub, ...rest].filter((x): x is string => !!x);
+    const album = flag(a, "album");
+    const artist = flag(a, "artist");
+    const out = flag(a, "out");
+    if (!album || !artist || !out) {
+      console.error("research requires --album --artist --out [--focus]");
+      return 2;
+    }
+    await researchAlbum(album, artist, out, flag(a, "focus"));
+    console.log(`research written to ${out}`);
+    return 0;
+  }
+
+  if (cmd === "write") {
+    const a = [sub, ...rest].filter((x): x is string => !!x);
+    const researchPath = flag(a, "research");
+    const out = flag(a, "out");
+    const album = flag(a, "album");
+    const artist = flag(a, "artist");
+    const host = flag(a, "host");
+    const hostName = flag(a, "host-name");
+    const season = flag(a, "season");
+    const episode = flag(a, "episode");
+    if (!researchPath || !out || !album || !artist || !host || !hostName || !season || !episode) {
+      console.error("write requires --research --out --album --artist --host --host-name --season --episode [--model --target-minutes --reference-tracks]");
+      return 2;
+    }
+    const tm = flag(a, "target-minutes");
+    const rt = flag(a, "reference-tracks");
+    const script = await writeScript({
+      album,
+      artist,
+      host,
+      hostName,
+      season: parseInt(season, 10),
+      episode: parseInt(episode, 10),
+      model: flag(a, "model"),
+      targetMinutes: tm ? parseInt(tm, 10) : undefined,
+      referenceTracks: rt ? parseInt(rt, 10) : undefined,
+      research: readFileSync(researchPath, "utf-8"),
+    });
+    writeFileSync(out, script, "utf-8");
+    console.log(`script written to ${out} (${script.length} chars)`);
+    return 0;
   }
 
   if (cmd === "render") {

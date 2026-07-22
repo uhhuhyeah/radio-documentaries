@@ -5,6 +5,7 @@
  *   pnpm cli catalog next [--season N] [--file seasons.md]
  *   pnpm cli catalog list [--season N]
  *   pnpm cli catalog assign --album A --artist B --host Jools [--season N]
+ *   pnpm cli preflight --album A --artist B [--lyrics-threshold 0.8]
  *   pnpm cli lint   path/to/script.md
  *   pnpm cli budget path/to/script.md [--cap 15000]
  *   pnpm cli navidrome ping | find-album --album A [--artist B] | album-songs --id ID | scan-status
@@ -27,6 +28,7 @@ import * as lint from "./lint";
 import { complete } from "./llm";
 import * as navidrome from "./navidrome";
 import { loadDotenv, songsOfAlbum } from "./navidrome";
+import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "./preflight";
 import { publishEpisode } from "./publish";
 import { renderEpisode } from "./render";
 import { stageAudio } from "./stage";
@@ -250,6 +252,26 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  if (cmd === "preflight") {
+    const a = [sub, ...rest].filter((x): x is string => !!x);
+    const album = flag(a, "album");
+    const artist = flag(a, "artist");
+    if (!album || !artist) {
+      console.error("preflight requires --album --artist [--lyrics-threshold 0.8]");
+      return 2;
+    }
+    const thrArg = flag(a, "lyrics-threshold");
+    const threshold = thrArg !== undefined ? parseFloat(thrArg) : DEFAULT_LYRICS_THRESHOLD;
+    const report = await runPreflight(album, artist, threshold);
+    console.log(`preflight ${album} — ${artist}`);
+    for (const c of report.checks) {
+      const mark = c.status === "pass" ? "✓" : c.status === "soft-fail" ? "~" : "✗";
+      console.log(`  ${mark} ${c.name.padEnd(20)} ${c.detail}`);
+    }
+    console.log(`  → ${report.ok ? "OK — safe to make" : report.hardFail ? "HARD FAIL" : "SOFT FAIL"}`);
+    return report.hardFail ? 1 : 0;
+  }
+
   if (cmd === "research") {
     const a = [sub, ...rest].filter((x): x is string => !!x);
     const album = flag(a, "album");
@@ -380,7 +402,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  console.error("usage: catalog | lint | budget | render | stage-audio | publish | navidrome | web-search | web-fetch (see header)");
+  console.error("usage: catalog | preflight | lint | budget | render | stage-audio | publish | navidrome | web-search | web-fetch (see header)");
   return 2;
 }
 

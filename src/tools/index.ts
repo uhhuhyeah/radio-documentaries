@@ -15,10 +15,40 @@ import * as catalog from "../catalog";
 import { factCheckFiles } from "../factcheck";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum } from "../navidrome";
+import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "../preflight";
 import { renderEpisode } from "../render";
 import { stageAudio } from "../stage";
 import { researchAlbumTool, writeScriptTool } from "./subagents";
 import { toolResult as result } from "./util";
+
+// --- preflight (network; the make-ability gate) ------------------------------
+
+export const preflightTool = defineTool({
+  name: "preflight",
+  label: "Preflight make-ability gate",
+  description:
+    "Make-ability gate to run BEFORE research/render effort. Checks the album resolves in Navidrome " +
+    "(HARD fail — publish needs its reference tracks), that enough track lyrics resolve (SOFT fail — low " +
+    "lyrics mean a thin/short episode), and that the required API keys are set (HARD fail). Returns each " +
+    "check's status and whether it's safe to make the episode; do not proceed on a hard fail.",
+  parameters: Type.Object({
+    album: Type.String(),
+    artist: Type.String(),
+    lyricsThreshold: Type.Optional(
+      Type.Number({ description: "Min fraction of tracks that must resolve lyrics (default 0.8)." }),
+    ),
+  }),
+  execute: async (_id, params) => {
+    const report = await runPreflight(params.album, params.artist, params.lyricsThreshold ?? DEFAULT_LYRICS_THRESHOLD);
+    const lines = report.checks.map((c) => `  [${c.status}] ${c.name}: ${c.detail}`).join("\n");
+    const verdict = report.ok
+      ? "OK — safe to make"
+      : report.hardFail
+        ? "HARD FAIL — do not proceed"
+        : "SOFT FAIL — proceed with caution";
+    return result(`preflight: ${verdict}\n${lines}`, report);
+  },
+});
 
 // --- catalog -----------------------------------------------------------------
 
@@ -233,6 +263,7 @@ export const stageAudioTool = defineTool({
 
 /** All tools the Producer agent may call. */
 export const documentaryTools = [
+  preflightTool,
   catalogNextTool,
   catalogListTool,
   catalogAssignTool,

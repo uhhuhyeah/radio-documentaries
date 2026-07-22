@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ttsBody, ttsUrl, voiceSettings } from "./elevenlabs";
-import { planEpisode, reconcileAudioDir, sanitizeForTts } from "./render";
+import { MIN_SEGMENT_BYTES, planEpisode, reconcileAudioDir, sanitizeForTts, segmentsToRender } from "./render";
 import * as sm from "./scriptmodel";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
@@ -94,6 +94,54 @@ describe("reconcileAudioDir", () => {
 
   it("returns empty (no throw) when the audio dir does not exist yet", () => {
     expect(reconcileAudioDir(join(dir, "nope"), ["a.mp3"])).toEqual([]);
+  });
+});
+
+describe("segmentsToRender (resume decision)", () => {
+  const plan = planEpisode(clean());
+  const files = plan.steps.map((s) => s.filename); // 4 spoken segments
+  const big = MIN_SEGMENT_BYTES * 10; // a comfortably-complete segment
+  const present = (m: Record<string, number>): Map<string, number> => new Map(Object.entries(m));
+
+  it("renders every segment when the dir is empty (nothing to resume from)", () => {
+    expect(segmentsToRender(plan, present({})).map((s) => s.filename)).toEqual(files);
+  });
+
+  it("renders nothing when every segment is already present and complete (idempotent re-run)", () => {
+    const all = present(Object.fromEntries(files.map((f) => [f, big])));
+    expect(segmentsToRender(plan, all)).toEqual([]);
+  });
+
+  it("renders only the missing segments, skipping the complete ones a prior run left", () => {
+    // First two rendered before the crash; last two never written.
+    const partial = present({ [files[0]!]: big, [files[1]!]: big });
+    expect(segmentsToRender(plan, partial).map((s) => s.filename)).toEqual([files[2]!, files[3]!]);
+  });
+
+  it("re-renders a present-but-truncated (empty / mid-write) segment", () => {
+    const partial = present({
+      [files[0]!]: big, // complete → skip
+      [files[1]!]: 0, // 0-byte stub → re-render
+      [files[2]!]: MIN_SEGMENT_BYTES - 1, // under the floor (truncated) → re-render
+      [files[3]!]: big, // complete → skip
+    });
+    expect(segmentsToRender(plan, partial).map((s) => s.filename)).toEqual([files[1]!, files[2]!]);
+  });
+
+  it("treats a file exactly at the size floor as complete", () => {
+    const partial = present(Object.fromEntries(files.map((f) => [f, MIN_SEGMENT_BYTES])));
+    expect(segmentsToRender(plan, partial)).toEqual([]);
+  });
+
+  it("force renders all segments even when every file is present and complete", () => {
+    const all = present(Object.fromEntries(files.map((f) => [f, big])));
+    expect(segmentsToRender(plan, all, { force: true }).map((s) => s.filename)).toEqual(files);
+  });
+
+  it("honours a custom min-size floor", () => {
+    const partial = present(Object.fromEntries(files.map((f) => [f, 2048])));
+    // With a higher floor, the 2 KB files count as truncated and all re-render.
+    expect(segmentsToRender(plan, partial, { minBytes: 4096 }).map((s) => s.filename)).toEqual(files);
   });
 });
 

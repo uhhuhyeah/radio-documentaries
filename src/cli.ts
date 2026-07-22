@@ -22,6 +22,7 @@ import { writeScript } from "./agents/writer";
 import * as budget from "./budget";
 import { config } from "./config";
 import * as catalog from "./catalog";
+import { factCheckFiles } from "./factcheck";
 import * as lint from "./lint";
 import { complete } from "./llm";
 import * as navidrome from "./navidrome";
@@ -259,6 +260,23 @@ async function main(): Promise<number> {
     }
     await researchAlbum(album, artist, out, flag(a, "focus"));
     console.log(`research written to ${out}`);
+    return 0;
+  }
+
+  if (cmd === "factcheck") {
+    const a = [sub, ...rest].filter((x): x is string => !!x);
+    const scriptPath = flag(a, "script");
+    const researchPath = flag(a, "research");
+    if (!scriptPath || !researchPath) {
+      console.error("factcheck requires --script --research");
+      return 2;
+    }
+    const findings = await factCheckFiles(scriptPath, researchPath);
+    console.log(`factcheck ${scriptPath}`);
+    if (findings.length === 0) console.log("  OK — no unsupported or contradicted album-facts");
+    for (const f of findings) console.log(`  [${f.severity}] ${JSON.stringify(f.quote)}\n      ${f.issue}`);
+    const contradictions = findings.filter((f) => f.severity === "CONTRADICTION").length;
+    console.log(`  → ${findings.length} finding(s), ${contradictions} contradiction(s)`);
     return 0;
   }
 

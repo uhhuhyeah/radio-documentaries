@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { htmlToText, parseBraveResults } from "./web";
+import { htmlToText, parseBraveResults, sourceReliability } from "./web";
 
 describe("htmlToText", () => {
   it("strips tags and decodes entities", () => {
@@ -49,5 +49,27 @@ describe("parseBraveResults", () => {
     expect(parseBraveResults({})).toEqual([]);
     expect(parseBraveResults({ web: {} })).toEqual([]);
     expect(parseBraveResults(null)).toEqual([]);
+  });
+});
+
+describe("sourceReliability", () => {
+  it("rates established music press as reliable", () => {
+    expect(sourceReliability("https://en.wikipedia.org/wiki/Punisher_(album)")).toBe("reliable");
+    expect(sourceReliability("https://pitchfork.com/reviews/albums/punisher/")).toBe("reliable");
+    expect(sourceReliability("https://www.soundonsound.com/techniques/whatever")).toBe("reliable");
+  });
+  it("rates crowd-sourced / fan / forum sources as low-trust", () => {
+    expect(sourceReliability("https://equipboard.com/pros/phoebe-bridgers")).toBe("low-trust");
+    expect(sourceReliability("https://genius.com/albums/Phoebe-bridgers/Punisher")).toBe("low-trust");
+    expect(sourceReliability("https://music.fandom.com/wiki/Punisher")).toBe("low-trust");
+    expect(sourceReliability("https://www.reddit.com/r/phoebebridgers/comments/x")).toBe("low-trust");
+  });
+  it("matches subdomains, not arbitrary substrings", () => {
+    expect(sourceReliability("https://blog.pitchfork.com/x")).toBe("reliable");
+    expect(sourceReliability("https://notpitchfork.com.evil.example/x")).toBe("unrated");
+  });
+  it("returns unrated for unknown hosts and unparseable urls", () => {
+    expect(sourceReliability("https://some-random-blog.example/post")).toBe("unrated");
+    expect(sourceReliability("not a url")).toBe("unrated");
   });
 });

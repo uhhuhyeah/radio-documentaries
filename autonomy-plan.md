@@ -123,20 +123,38 @@ sits on the money/quality gates until each is trusted to run unattended.
 
 Before Hermes can drive anything, we need a clean surface for it to call and a notion of a "run."
 
-### T0-1 — Pipeline surface for Hermes (recommend: MCP server)
-- **Goal:** a stable interface Hermes (Desktop and the Proxmox LXC instance) can call to run steps
-  and read state.
-- **Why now:** `documentaryTools` in `src/tools/index.ts` already wraps every step as a
-  `defineTool`. The cheapest path to Hermes-callable is to expose those over **MCP**. Alternatives:
-  Hermes shells the `docuflow` CLI (simplest, least structured), or a thin HTTP service.
-- **Build:** an MCP server entrypoint (`src/mcp.ts` / `pnpm mcp`) that registers the existing tools
-  plus the Tier-1 guardrail ops (preflight, credit-check, run-status). Reuse the `defineTool`
-  definitions; don't fork logic.
-- **Guardrail vs. judgment:** interface only. The tools it exposes carry the guardrails.
-- **Acceptance:** Hermes Desktop can list + call the pipeline tools; a dry "assign → research"
-  works over MCP.
-- **Depends on:** none.
-- **Open questions:** MCP vs. CLI-shell vs. HTTP? (see Open questions for David #1).
+### T0-1 — Pipeline surface for Hermes (MCP server over HTTP)
+- **Goal:** a stable interface Hermes (CTID 105) can call to run steps and read state.
+- **Spike outcome (2026-07-21):** `hermes-agent` has an MCP **client** that speaks **stdio and
+  HTTP**; a remote server is configured under `mcp_servers` in `~/.hermes/config.yaml` by giving it
+  a `url` (presence of `url` selects HTTP/SSE — there is no separate transport key). So the topology
+  is confirmed: the pipeline LXC serves MCP over HTTP; Hermes connects. Config Hermes needs:
+  ```yaml
+  mcp_servers:
+    subwave-pipeline:
+      url: "http://<pipeline-lxc-ip>:<port>/mcp"
+      headers: { Authorization: "Bearer <shared-secret>" }
+      timeout: 600          # research ~9min / write ~8min / render — needs long timeouts
+      connect_timeout: 60
+      tools:
+        include: [preflight, research_album, write_script, lint_script, qa_script,
+                  factcheck_script, budget_estimate, catalog_next, catalog_list, catalog_assign]
+  ```
+  (`tools.include`/`exclude` filter which tools Hermes sees — this is our Phase gate, see T2-4/rollout.)
+- **Build:** an HTTP MCP server entrypoint (`src/mcp.ts` / `pnpm mcp`) using the **MCP TypeScript
+  SDK** (`@modelcontextprotocol/sdk`) with the **Streamable-HTTP** transport. Our tools are
+  `@earendil-works/pi-coding-agent` `defineTool`s, so **adapt the underlying functions + their
+  TypeBox schemas onto MCP tool registrations** — don't fork the domain logic. Add a bearer-token
+  check on the HTTP layer (shared secret, provisioned via the `.env` pattern). Set generous request
+  timeouts server-side to match the long-running steps. Register the same tools as `documentaryTools`
+  plus a `run_status` op (T0-2).
+- **Guardrail vs. judgment:** interface only. The tools carry the guardrails; the `include` list is a
+  hard exposure control (Hermes literally can't call an omitted tool).
+- **Acceptance:** Hermes (CTID 105) lists + calls the pipeline tools over HTTP with the bearer header;
+  a dry "assign → research" works end to end; an omitted tool is not visible to Hermes.
+- **Depends on:** none (pairs with T0-2 for `run_status`).
+- **Note:** confirm the **installed Hermes v0.15.1** actually has HTTP-client MCP + `tools.include`
+  filtering (docs describe `main`); `hermes update` if not (container is disposable). See T0-3.
 
 ### T0-2 — Run ledger & idempotency state
 - **Goal:** a per-episode run record so any run is inspectable and resumable, and Hermes can reason
@@ -293,16 +311,27 @@ This is where Hermes earns its keep — the work I did by hand each episode.
 
 ### T2-4 — Human-in-the-loop escape hatch (supervised autonomy)
 - **Goal:** let Hermes pause and hand a decision to David instead of guessing on money/quality.
-- **Why now:** this is the mechanism for the first rollout phase — Hermes does everything up to the
-  render/publish gate, then holds and asks.
-- **Build:** a `hold-for-review` run state + a notification payload (script summary, budget, QA +
-  fact-check findings, a listen/preview link if available) delivered on the chosen channel; a
-  resume path when David approves/edits. Approvals must be explicit and per-action (don't generalize
-  one approval to the next episode).
-- **Guardrail vs. judgment:** the *requirement* to hold on money/publish is a guardrail (per phase);
-  the framing/summary is Hermes.
-- **Acceptance:** Hermes reaches the gate, David gets a review ping, approves, Hermes finishes.
-- **Depends on:** T0-2, T3-2 (notifications).
+- **Why now:** the mechanism for Phase 0 — Hermes does everything up to the render/publish gate,
+  then holds and asks.
+- **Spike consequence — DON'T rely on Hermes approval.** In the installed Hermes, **MCP tools
+  auto-execute with no approval prompt** (`approvals.mode` gates terminal commands, not MCP tools;
+  per-tool MCP gating is an unshipped feature, issue #49167). So the money/publish gate is enforced
+  two deterministic ways instead:
+  1. **Tool filtering IS the gate.** Phase 0's `tools.include` in Hermes's config **omits
+     `render_episode`/`stage_audio`/`publish`** — Hermes physically cannot spend credits or publish;
+     it runs through `budget_estimate`, then a human runs the tail (or approves). Phase 1 adds those
+     tools to the list. This lives in Hermes's own config and needs no code.
+  2. **The pipeline self-guards.** T1-1 credit hard-stop / caps / lint / QA are the real net, since
+     Hermes won't prompt. (This is exactly why those had to be deterministic.)
+- **Build:** for when render/publish ARE exposed, a Telegram `hold-for-review` flow — the pipeline
+  posts the summary (budget, QA + fact-check findings) to Telegram and returns a *pending* state; a
+  `resume`/approve path continues it. Approvals explicit and per-action (never generalized to the
+  next episode). Simplest first cut leans on #1 above; the pipeline-side hold is the Phase-1 upgrade.
+- **Guardrail vs. judgment:** the *requirement* to hold on money/publish is a guardrail, enforced by
+  tool-filtering (deterministic) — not by trusting Hermes to ask.
+- **Acceptance:** in Phase 0, Hermes cannot call render/stage/publish; in Phase 1, it holds via
+  Telegram before render, David approves, Hermes finishes.
+- **Depends on:** T0-1 (tool filtering), T0-2 (run state), T3-2 (Telegram notifications).
 
 ---
 
@@ -351,8 +380,10 @@ This is where Hermes earns its keep — the work I did by hand each episode.
 Don't jump to fully hands-off. Graduate:
 
 - **Phase 0 — Supervised.** Hermes runs `preflight → research → verify → write → QA → factcheck →
-  budget`, then **holds before render**, pinging David with the script, cost, and findings. David
-  approves; Hermes finishes (render → stage → rescan → publish → status).
+  budget`, then stops — **because `render_episode`/`stage_audio`/`publish` are omitted from its MCP
+  `tools.include` list, it can't go further.** It pings David (Telegram) with the script, cost, and
+  findings; David runs the tail (or approves). Enforced by tool-filtering, not by trusting Hermes to
+  pause (MCP tools auto-run — see T2-4).
   *Needs:* T0-1, T0-2, T1-1, T1-3, T2-1, T2-2, T2-4.
 - **Phase 1 — Bounded auto.** Hermes auto-proceeds through render/publish **within a hard budget
   cap and a clean preflight**, holding only on exceptions (an unresolved `CONTRADICTION`, a
@@ -409,8 +440,11 @@ autonomy (folds into the approval-gate rollout), notifications (Telegram), fact-
 2. **Pipeline LXC provisioning.** Confirm the shape: new LXC on `pve01`, Node/pnpm + clone
    `radio-documentaries`, `.env` provisioned via your existing pattern, MCP server as a user service
    (mirror the Hermes gateway's linger/systemd setup). Anything you want different?
-3. **Hermes ↔ MCP wiring.** Verify `hermes-agent` can register a **remote** MCP server as a toolset
-   in `~/.hermes/config.yaml` (network transport, not just local stdio), and how the allowlist/tool
-   approval interacts with it. This is a Hermes-side spike, likely its own short session.
+3. **Hermes ↔ MCP wiring — SPIKED 2026-07-21 (see T0-1/T2-4).** `hermes-agent` connects to a remote
+   HTTP MCP server via `mcp_servers.<name>.url` + `headers` bearer; `tools.include`/`exclude` filters
+   what Hermes sees. Key finding: **MCP tools auto-execute (no approval prompt)**, so the money gate
+   is enforced by omitting render/stage/publish from `tools.include`, not by Hermes pausing. *Residual
+   to verify:* that the installed **v0.15.1** (docs describe `main`) has HTTP-client MCP + `include`
+   filtering — read-only check on CTID 105, `hermes update` if behind.
 4. **Trigger UX.** Phase 0 = Telegram-only ("make the next episode" / "make S01E03")? Keep the
    `docuflow` CLI as the manual fallback? A real cron schedule is deferred to T3-4.

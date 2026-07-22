@@ -20,6 +20,39 @@ inside those limits; a human approves the irreversible/costly steps until confid
 
 ---
 
+## Decisions & environment (resolved 2026-07-21)
+
+These answers (from David) are settled and should be assumed by every work package below.
+
+**Orchestration & policy**
+
+| # | Decision |
+|---|----------|
+| Interface (Q1) | **MCP server** — expose the existing `documentaryTools` over MCP; Hermes connects to it as a toolset. |
+| Approval gate (Q4) | **Hold-before-render for Phase 0** (intermediary), **full-auto-within-budget as the destination**. Rollout = supervised → bounded → scheduled, exactly as below. |
+| Fact-check (Q6) | **Block on `CONTRADICTION`** (retry `write`, then hold if unresolved); **triage `UNSUPPORTED`** (Hermes judges; it's noisy/overreach-prone). |
+| Models (Q7) | **All `qwen3-235b` for now** (proven on E01/E02). Revisit only if volume makes cost/latency hurt. |
+| Volume / budget (Q3) | **1 episode / month.** At ~9k credits/episode that's trivially inside the 27k key cap + rollover, so **no complex monthly ceiling is needed** — the guardrail is just a per-run credit preflight. **Auto-proceed criteria (David's bar):** script word-count in bounds **and** the key has enough credits → Hermes may proceed. (I'd add three more automated gates that are already cheap: `lint` passes, lyric-fidelity holds, and no fact-check `CONTRADICTION`; plus the make-ability preflight — album in Navidrome + lyrics resolve.) |
+| Notifications (Q5) | **Telegram** — Hermes already has it. This collapses T2-4 (human-in-the-loop) and T3-2 (alerting): Hermes messages David on Telegram to hold/approve/report, and David replies to approve. No ntfy/email/Slack needed. |
+
+**The environment (from the Brookgrass homelab vault + `subwave-config`)**
+
+- **Hermes** = Nous Research `hermes-agent` (wraps Codex/`gpt-5.5`), running in **Proxmox LXC CTID 105** (`hermes`, `192.168.1.88`), Debian 12, **unprivileged**, non-root user `hermes` (uid 1000), 2 vCPU / 4 GB / 20 GB. Its `terminal` tool runs **locally inside the container**. Behaviour/toolsets in `~/.hermes/config.yaml`; secrets (incl. Telegram token) in `~/.hermes/.env`. Reachable only via the Proxmox host: `ssh -t root@192.168.1.10 'pct exec 105 -- su - hermes'`. Supports `worktree: true` per session. Treated as **disposable/experiment**, excluded from backups.
+- **Proxmox host** = Dell OptiPlex 7090, `192.168.1.10` (LAN) / `100.110.0.9` (tailnet — this is the host `stage.ts` already SSHes to). `pve01` subnet-routes `192.168.1.0/24` over Tailscale, which is why the Mac reaches Navidrome and the NAS today.
+- **Navidrome** = LXC **CTID 106** (`192.168.1.110:4533`), Subsonic API, hourly rescans, admin `david`. Docs live at `/mnt/music/subwave-documentaries/` (its view). ⚠️ **Never rotate the `david` password** — it fans out to SUB/WAVE (LXC 107) + Homepage (LXC 103).
+- **The NAS** = Synology `192.168.1.93:/volume1/Music`, mounted on the **Proxmox host** at `/mnt/nas/music`. Bind-mounted **read-only** into Navidrome (`mp0 … ro=1`) but **read-write into the Jellyfin LXC**. `stage.ts` currently writes by SSHing to a host with the r/w mount (`root@100.110.0.9` = the Proxmox host) and dropping files in `/mnt/nas/music/subwave-documentaries/`; Navidrome sees them r/o and indexes on rescan.
+- **Secrets provisioning:** David already provisions `.env` into LXCs from his machine (the `subwave-config` pattern). The pipeline LXC's `.env` gets the same treatment — reuse it, don't invent a vault.
+
+**What this implies for the build (recommended shape)**
+
+- **Where it runs:** a **dedicated pipeline LXC** on `pve01` (its own `.env`, its own NAS access), running the T0-1 **MCP server**. Hermes (CTID 105) connects to it as an MCP toolset over the LAN. This keeps the pipeline off the disposable Hermes container and off the sleeping Mac. David's accepted middle-ground — "trigger it, walk away, an hour later it's on Navidrome" — is satisfied by a **Telegram-triggered** run (no strict 3am cron required for Phase 0/1); a real schedule is a later add (T3-4).
+- **NAS write path — the "digging" (feeds T0-3 / T1-5), three options:**
+  - **A. SSH to a r/w-mount host (what `stage.ts` does now).** Zero mount work, already proven. But an LXC holding *root* SSH to the Proxmox host weakens the unprivileged-sandbox model; prefer SSHing to the **Jellyfin LXC** (non-root, has the r/w mount) over the host.
+  - **B. Bind-mount the Synology Music share r/w into the pipeline LXC** (mirror how Jellyfin is set up). Cleanest — `stage.ts` becomes a local copy, no SSH hop — but needs the unprivileged-LXC **uid-mapping** work to get real r/w. This is the "digging" David flagged.
+  - **Recommendation:** ship Phase 0 on **A (Jellyfin-LXC SSH)** to avoid blocking on mount work; treat **B** as the clean follow-up. Either way `stage --replace` + idempotent publish already handle re-runs.
+
+---
+
 ## Current state — what's already done
 
 The **mechanical** pipeline is ~80–90% there. Both episodes shipped as a linear chain of CLI
@@ -349,21 +382,25 @@ guardrail — the quota wall), **T2-3** (auto-QA — cheap deterministic wins), 
 
 ---
 
-## Open questions for David
+## Open questions
 
-1. **Hermes ↔ pipeline interface:** MCP server (recommended — reuses `documentaryTools`), Hermes
-   shelling the `docuflow` CLI, or a small HTTP service?
-2. **Execution topology:** does the pipeline run on the Mac (Hermes Desktop + the LXC both connect
-   to it) or get deployed into the Hermes LXC? Either way, how does the orchestrating Hermes get the
-   API keys, NAS SSH (`root@100.110.0.9`), and Navidrome network access?
-3. **Budget policy:** per-episode credit cap? A monthly ceiling? An auto-proceed threshold (spend
-   under X proceeds; over X holds), or always hold before render in Phase 0/1?
-4. **Publish autonomy:** in Phase 1, auto-publish the playlist, or always hold-for-review before a
-   playlist goes live?
-5. **Notification channel:** ntfy / Slack / email / Hermes DM — where should holds, failures, and
-   completions land?
-6. **Fact-check strictness:** always block on `CONTRADICTION`? How much `UNSUPPORTED` is tolerable
-   before a human is pulled in?
-7. **Model policy for autonomy:** keep everything on qwen3-235b (quality, slower/pricier) or drop
-   `research`/`write` back to 30b for cheaper unattended batches? (`verify` clearly stays 235b.)
-```
+**Resolved 2026-07-21** — see *Decisions & environment* above: interface (MCP), approval gate
+(hold-before-render → full-auto), budget/volume (1/mo; word-count + credit preflight), publish
+autonomy (folds into the approval-gate rollout), notifications (Telegram), fact-check strictness
+(block `CONTRADICTION`, triage `UNSUPPORTED`), model policy (all-235b).
+
+**Still open — the "digging":**
+
+1. **NAS write path (T0-3 / T1-5).** Confirm the Phase-0 approach: keep `stage.ts` SSHing, but to
+   the **Jellyfin LXC** (non-root, r/w mount) instead of `root@` the Proxmox host, to preserve the
+   sandbox model? Or go straight to option **B** (r/w bind-mount into the pipeline LXC) and do the
+   unprivileged-LXC uid-mapping work now? Need the Jellyfin LXC details (CTID, user, mount path) for
+   option A.
+2. **Pipeline LXC provisioning.** Confirm the shape: new LXC on `pve01`, Node/pnpm + clone
+   `radio-documentaries`, `.env` provisioned via your existing pattern, MCP server as a user service
+   (mirror the Hermes gateway's linger/systemd setup). Anything you want different?
+3. **Hermes ↔ MCP wiring.** Verify `hermes-agent` can register a **remote** MCP server as a toolset
+   in `~/.hermes/config.yaml` (network transport, not just local stdio), and how the allowlist/tool
+   approval interacts with it. This is a Hermes-side spike, likely its own short session.
+4. **Trigger UX.** Phase 0 = Telegram-only ("make the next episode" / "make S01E03")? Keep the
+   `docuflow` CLI as the manual fallback? A real cron schedule is deferred to T3-4.

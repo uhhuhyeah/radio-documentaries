@@ -23,6 +23,8 @@ describe("buildWriterMessage", () => {
   it("fresh mode: full-write instruction, the research, and no revision block", () => {
     const msg = buildWriterMessage(BASE);
     expect(msg).toContain("Write the FULL 25-minute script now");
+    expect(msg).toContain("TRACK-BY-TRACK MAKING-OF WALK"); // length-forcing structure directive
+    expect(msg).toContain("AT LEAST 12 SPOKEN parts");
     expect(msg).toContain("RESEARCH NOTES (your only source of facts)");
     expect(msg).not.toContain("REVISION PASS");
     expect(msg).not.toContain("PREVIOUS DRAFT");

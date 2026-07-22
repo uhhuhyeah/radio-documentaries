@@ -13,8 +13,11 @@ import { WRITER_SYSTEM } from "./system-prompts";
 // Length is settled HERE, at generation — never via a revision (deepening a draft pads and invents;
 // we watched factcheck go 2→14 that way). A fresh write that lands short is regenerated fresh (the
 // track-by-track length is variable run to run); a revision is a single pass that preserves length.
-const HOUSE_MIN_MINUTES = 20; // matches the qa.ts house floor
-const MAX_FRESH_ATTEMPTS = 3; // 1 + up to 2 fresh regenerations to clear the floor
+// Fresh writes aim ABOVE the qa house floor (20) so the small trim a factual revision causes doesn't
+// dip the final script back under it — revisions can't re-lengthen (that pads and invents), so the
+// headroom has to come from generation.
+const FRESH_TARGET_MINUTES = 22;
+const MAX_FRESH_ATTEMPTS = 3; // 1 + up to 2 fresh regenerations to reach the target
 
 function personaBlock(hostId: string, hostName: string): string {
   const p = PERSONAS[hostId];
@@ -229,7 +232,7 @@ export async function generateForLength(
   gen: () => Promise<string>,
   opts: { revising: boolean; minMinutes?: number; maxAttempts?: number },
 ): Promise<string> {
-  const min = opts.minMinutes ?? HOUSE_MIN_MINUTES;
+  const min = opts.minMinutes ?? FRESH_TARGET_MINUTES;
   const attempts = opts.revising ? 1 : (opts.maxAttempts ?? MAX_FRESH_ATTEMPTS);
   let best = "";
   let bestMin = -1;

@@ -46,10 +46,20 @@ These answers (from David) are settled and should be assumed by every work packa
 **What this implies for the build (recommended shape)**
 
 - **Where it runs:** a **dedicated pipeline LXC** on `pve01` (its own `.env`, its own NAS access), running the T0-1 **MCP server**. Hermes (CTID 105) connects to it as an MCP toolset over the LAN. This keeps the pipeline off the disposable Hermes container and off the sleeping Mac. David's accepted middle-ground — "trigger it, walk away, an hour later it's on Navidrome" — is satisfied by a **Telegram-triggered** run (no strict 3am cron required for Phase 0/1); a real schedule is a later add (T3-4).
-- **NAS write path — the "digging" (feeds T0-3 / T1-5), three options:**
-  - **A. SSH to a r/w-mount host (what `stage.ts` does now).** Zero mount work, already proven. But an LXC holding *root* SSH to the Proxmox host weakens the unprivileged-sandbox model; prefer SSHing to the **Jellyfin LXC** (non-root, has the r/w mount) over the host.
-  - **B. Bind-mount the Synology Music share r/w into the pipeline LXC** (mirror how Jellyfin is set up). Cleanest — `stage.ts` becomes a local copy, no SSH hop — but needs the unprivileged-LXC **uid-mapping** work to get real r/w. This is the "digging" David flagged.
-  - **Recommendation:** ship Phase 0 on **A (Jellyfin-LXC SSH)** to avoid blocking on mount work; treat **B** as the clean follow-up. Either way `stage --replace` + idempotent publish already handle re-runs.
+- **NAS write path — resolved (feeds T0-3 / T1-5).** The Jellyfin LXC (**CTID 101**, `192.168.1.83`)
+  is the r/w reference: all four of its NFS bind-mounts are read-write, incl. `/mnt/nas/music →
+  /mnt/music`. But Jellyfin has **no SSH user** — it's reachable only via `pct exec 101` from the
+  Proxmox host *as root* — so "SSH to Jellyfin" is a dead end (it's host-root plus an extra hop to
+  the same Synology files, no sandbox gain). Two real options:
+  - **A. SSH to the Proxmox host as root** (what `stage.ts` does now, `root@100.110.0.9`). Proven,
+    zero mount work — but a pipeline LXC holding host-root SSH breaks the unprivileged-sandbox model.
+  - **B. Give the pipeline LXC its own r/w NFS bind-mount of the music share** (mirror Jellyfin's
+    `mp` config: `/mnt/nas/music → /mnt/music`, rw). `stage.ts` becomes a **local copy** — no SSH, no
+    host access. Preserves the sandbox *and* simplifies the code. Jellyfin proves the
+    host↔Synology↔unprivileged-container r/w path already works; the only "digging" is replicating
+    its uid-mapping.
+  - **Recommendation: B is the target.** Keep A only as a stopgap if the mount hits a snag. Either
+    way `stage --replace` + idempotent publish already handle re-runs.
 
 ---
 
@@ -391,11 +401,11 @@ autonomy (folds into the approval-gate rollout), notifications (Telegram), fact-
 
 **Still open — the "digging":**
 
-1. **NAS write path (T0-3 / T1-5).** Confirm the Phase-0 approach: keep `stage.ts` SSHing, but to
-   the **Jellyfin LXC** (non-root, r/w mount) instead of `root@` the Proxmox host, to preserve the
-   sandbox model? Or go straight to option **B** (r/w bind-mount into the pipeline LXC) and do the
-   unprivileged-LXC uid-mapping work now? Need the Jellyfin LXC details (CTID, user, mount path) for
-   option A.
+1. **NAS write path (T0-3 / T1-5) — decided: option B** (r/w bind-mount into the pipeline LXC,
+   mirroring Jellyfin's `mp` config; `stage.ts` becomes a local copy). "SSH to Jellyfin" was ruled
+   out — Jellyfin has no SSH user (access is host-root `pct exec` only). Remaining work is the actual
+   LXC mount config + replicating Jellyfin's uid-mapping so an unprivileged container gets real r/w
+   on the Synology share; option A (`root@100.110.0.9`) stays only as a stopgap.
 2. **Pipeline LXC provisioning.** Confirm the shape: new LXC on `pve01`, Node/pnpm + clone
    `radio-documentaries`, `.env` provisioned via your existing pattern, MCP server as a user service
    (mirror the Hermes gateway's linger/systemd setup). Anything you want different?

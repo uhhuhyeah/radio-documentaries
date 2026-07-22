@@ -5,27 +5,27 @@
 #
 #   ./scripts/sync-seasons.sh
 #
-# The file lands on the PIPELINE LXC (CTID 108) — that's where the MCP server
-# runs the catalog_* tools. Hermes (LXC 105) never reads it directly. The
-# catalog tools read the file fresh on every call, so no service restart is
+# The pipeline LXC (CTID 108) is NOT directly SSH-able. The way in is two hops,
+# the same path you use by hand: SSH to the Proxmox host (your key works there),
+# then `pct exec 108` into the container. So this pipes the file over that hop and
+# writes it INSIDE 108 as the `pipeline` user (via runuser) — so the file is owned
+# by pipeline automatically, and catalog_assign / catalog_set_status (which write
+# seasons.md as that user) keep working. No temp file, no chown.
+#
+# The catalog tools read seasons.md fresh on every call, so no service restart is
 # needed; the next catalog_* call picks it up.
 #
-# We connect as root (key-based — the `pipeline` service user has no authorized
-# key, which is why connecting as it prompted for a password). But catalog_assign
-# / catalog_set_status WRITE to seasons.md AS the pipeline user, so after copying
-# we chown the file to pipeline — otherwise a root-owned file would break those
-# writes with EACCES.
-#
-# Overrides:
-#   PIPELINE_HOST=admin@192.168.1.90 SUDO=sudo ./scripts/sync-seasons.sh   # non-root login
-#   REMOTE_DIR=/opt/radio-documentaries  OWNER=pipeline                    # if paths/user differ
+# Overrides if your setup differs:
+#   PROXMOX_HOST=admin@192.168.1.10 SUDO=sudo   # non-root Proxmox login (pct needs root)
+#   CTID=108  OWNER=pipeline  REMOTE_DIR=/opt/radio-documentaries
 #
 set -euo pipefail
 
-PIPELINE_HOST="${PIPELINE_HOST:-root@192.168.1.90}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/radio-documentaries}"
+PROXMOX_HOST="${PROXMOX_HOST:-root@192.168.1.10}"
+CTID="${CTID:-108}"
 OWNER="${OWNER:-pipeline}"
-SUDO="${SUDO:-}"  # set to "sudo" when logging in as a non-root user (e.g. admin@)
+REMOTE_DIR="${REMOTE_DIR:-/opt/radio-documentaries}"
+SUDO="${SUDO:-}"  # set to "sudo" when PROXMOX_HOST is a non-root user (pct requires root)
 
 # Resolve the repo root from this script's location, so it works from anywhere.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,18 +37,16 @@ if [[ ! -f "$LOCAL_FILE" ]]; then
 fi
 
 REMOTE_FILE="$REMOTE_DIR/seasons.md"
-echo "→ syncing seasons.md to $PIPELINE_HOST:$REMOTE_FILE"
+echo "→ syncing seasons.md → $PROXMOX_HOST → pct exec $CTID → $REMOTE_FILE (as $OWNER)"
 
-# rsync over ssh: fast, shows what changed, creates nothing but the file.
-# With SUDO set (non-root login), run the remote rsync under sudo so it can write REMOTE_DIR.
-RSYNC_ARGS=(-e ssh -av)
-[[ -n "$SUDO" ]] && RSYNC_ARGS+=(--rsync-path="$SUDO rsync")
-rsync "${RSYNC_ARGS[@]}" "$LOCAL_FILE" "$PIPELINE_HOST:$REMOTE_FILE"
+# Pipe the local file over the SSH hop into the container, written as the pipeline
+# user: stdin flows ssh → pct exec → runuser → `cat >` inside 108.
+ssh "$PROXMOX_HOST" \
+  "$SUDO pct exec $CTID -- runuser -u $OWNER -- sh -c 'cat > \"$REMOTE_FILE\"'" \
+  < "$LOCAL_FILE"
 
-# Hand the file to the service user so the catalog_* tools can write it back.
-ssh "$PIPELINE_HOST" "$SUDO chown $OWNER '$REMOTE_FILE'"
-
-# Confirm what landed (owner + line count + the season/status header lines).
+# Confirm what landed (owner:group from ls, plus the line count).
 echo "✓ done. Remote now has:"
-ssh "$PIPELINE_HOST" "ls -l '$REMOTE_FILE' | awk '{print \"  owner:\", \$3}'; wc -l < '$REMOTE_FILE' | xargs echo '  lines:'; grep -iE '^#|status' '$REMOTE_FILE' | head -n 5 | sed 's/^/  /'" \
-  || echo "  (synced, but the remote read-back failed — check SSH access as $PIPELINE_HOST)"
+ssh "$PROXMOX_HOST" \
+  "$SUDO pct exec $CTID -- sh -c 'ls -l \"$REMOTE_FILE\"; wc -l \"$REMOTE_FILE\"'" \
+  || echo "  (synced, but the read-back failed — check the pct exec path)"

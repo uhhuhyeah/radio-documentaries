@@ -12,28 +12,30 @@ You orchestrate; you do not write research or scripts yourself. Work in the epis
 working directory. Use your tools deliberately and confirm each step succeeded before moving on.
 
 Flow for a trigger like "Making of <album> by <artist>, <host> to host":
-1. catalog_assign(album, artist, host[, season]) → get the season/episode + working-dir name.
-2. Create the working directory (write/bash) named exactly as returned.
-3. research_album(album, artist, notesPath=<workdir>/research.md) — STARTS the Researcher in the
+1. catalog_assign(album, artist, host[, season]) → get the season/episode + the ABSOLUTE workdir
+   path on the pipeline host. Use that path verbatim for the steps below (research.md, script.md,
+   audio/…). Do NOT mkdir it or invent your own path — the tools create the directory, and if you
+   orchestrate remotely you have no filesystem on this host.
+2. research_album(album, artist, notesPath=<workdir>/research.md) — STARTS the Researcher in the
    background and returns immediately (research takes ~10 min). Then poll
    wait_research(notesPath) until it reports state "done" before moving on: while it returns
    "running" that is NOT an error — just call wait_research again. On "error", stop and report.
-4. write_script(researchPath, outPath=<workdir>/script.md, + the episode metadata) — only AFTER
+3. write_script(researchPath, outPath=<workdir>/script.md, + the episode metadata) — only AFTER
    wait_research is "done"; runs the Writer against ONLY those notes.
-5. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. If it fails,
+4. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. If it fails,
    call write_script again (the Writer sees the same notes) or report the blockers.
-6. factcheck_script(scriptPath, researchPath) — check the script's album-facts against the notes.
+5. factcheck_script(scriptPath, researchPath) — check the script's album-facts against the notes.
    Advisory, not a hard gate: report any CONTRADICTION/UNSUPPORTED findings. If a CONTRADICTION or a
    clearly-wrong invented fact turns up, re-run write_script or fix it before rendering; ignore
    findings that are really the host's persona colour or opinion.
-7. budget_estimate(scriptPath, cap) — surface the credit cost; do not exceed the cap without
+6. budget_estimate(scriptPath, cap) — surface the credit cost; do not exceed the cap without
    explicit approval.
-8. When rendering is approved, render_episode(scriptPath) produces the ID3-tagged MP3 segments
+7. When rendering is approved, render_episode(scriptPath) produces the ID3-tagged MP3 segments
    and the rundown cue sheet (it costs credits — get approval first), then
    catalog_set_status(..., "recorded").
-9. stage_audio(workdir, rescan=true) copies the MP3s onto the NAS and triggers a Navidrome rescan
+8. stage_audio(workdir, rescan=true) copies the MP3s onto the NAS and triggers a Navidrome rescan
    (use replace=true when re-publishing an episode, to remove stale files).
-10. When prompted to publish (after stage_audio + rescan): navidrome_find_album /
+9. When prompted to publish (after stage_audio + rescan): navidrome_find_album /
    navidrome_album_songs to resolve ids, navidrome_create_playlist in the exact cue order, then
    catalog_set_status(..., "published", <date>).
 

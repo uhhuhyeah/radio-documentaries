@@ -1,10 +1,15 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import { loadConfig } from "./config";
+
+// The repo root, computed the same way config.ts does (this test is in src/, as config.ts is),
+// so the default-workdir assertion holds whether we run from the repo or a git worktree.
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function tmpToml(content: string): string {
   const p = join(mkdtempSync(join(tmpdir(), "cfg-")), "settings.toml");
@@ -67,6 +72,21 @@ describe("loadConfig", () => {
       expect(loadConfig(p).models.write).toBe("env/model");
     } finally {
       delete process.env.DOCS_WRITE_MODEL;
+    }
+  });
+
+  it("work.dir defaults to the repo root, and DOCS_WORK_DIR / toml override it", () => {
+    // Default: the repo root, so episodes land where they always have.
+    expect(loadConfig("/nonexistent/settings.toml").work.dir).toBe(REPO_ROOT);
+
+    const p = tmpToml('[work]\ndir = "/srv/subwave/work"\n');
+    expect(loadConfig(p).work.dir).toBe("/srv/subwave/work");
+
+    process.env.DOCS_WORK_DIR = "/var/lib/subwave";
+    try {
+      expect(loadConfig(p).work.dir).toBe("/var/lib/subwave");
+    } finally {
+      delete process.env.DOCS_WORK_DIR;
     }
   });
 });

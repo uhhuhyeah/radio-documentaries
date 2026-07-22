@@ -17,6 +17,9 @@
  *   tsx src/research-runner.ts '{"album":"…","artist":"…","notesPath":"…","focus":"…"}'
  */
 
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
 import { researchAlbum } from "./agents/researcher";
 import { readStatus, writeStatus } from "./research-status";
 
@@ -40,6 +43,10 @@ function parseArgs(argv: string[]): RunnerArgs {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
   const { notesPath } = args;
+
+  // Belt-and-suspenders: the parent (research_album) already created the workdir, but ensure it
+  // exists so a direct runner invocation can't ENOENT on the sentinel/notes write.
+  mkdirSync(dirname(notesPath), { recursive: true });
 
   // Preserve the startedAt the parent stamped (so timing reflects the tool call),
   // and re-assert `running` with our pid — the parent recorded this same pid.

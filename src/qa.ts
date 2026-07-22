@@ -17,13 +17,12 @@ import * as sm from "./scriptmodel";
 export { type Finding, type Level };
 
 // Length gate: how far off `target_minutes` before we care, and the house range.
+// `target_minutes` / the house range are SPOKEN targets (the Writer prompt frames
+// 20–30 min as ~3,500–4,500 spoken words, and budget.ts bills spoken minutes only),
+// so this check measures spoken time and ignores SONG slots (real library tracks).
 const LENGTH_TOLERANCE = 0.2; // ±20% of target_minutes
 const HOUSE_MIN_MINUTES = 20;
 const HOUSE_MAX_MINUTES = 30;
-// SONG slots carry no duration; songs are real library tracks. Estimate each at a
-// typical single length so the runtime check reflects the whole episode, not just
-// the spoken parts (which lint already sanity-checks on their own).
-const SONG_MINUTES_EST = 4;
 
 // A quoted span this long (in words) is treated as a lyric rather than dialogue.
 const LYRIC_MIN_WORDS = 5;
@@ -105,23 +104,22 @@ export function qaText(scriptText: string, researchText: string): Finding[] {
     }
   }
 
-  // 2. LENGTH IN RANGE. Estimate the whole-episode runtime (spoken words at
-  //    WORDS_PER_MINUTE + a nominal length per SONG) and flag only when it's both
-  //    off `target_minutes` and outside the 20–30 min house range.
+  // 2. LENGTH IN RANGE. Measure SPOKEN runtime (the thing `target_minutes` and the
+  //    house range describe — SONG slots are library tracks, not spoken time) and
+  //    flag only when it's both off `target_minutes` and outside the house range.
   const spokenMin = spoken.reduce((n, s) => n + wordCount(s.body), 0) / WORDS_PER_MINUTE;
-  const totalMin = spokenMin + songs.length * SONG_MINUTES_EST;
-  const inHouse = totalMin >= HOUSE_MIN_MINUTES && totalMin <= HOUSE_MAX_MINUTES;
+  const inHouse = spokenMin >= HOUSE_MIN_MINUTES && spokenMin <= HOUSE_MAX_MINUTES;
   const target = fm.target_minutes;
   if (typeof target === "number") {
-    const offTarget = totalMin < target * (1 - LENGTH_TOLERANCE) || totalMin > target * (1 + LENGTH_TOLERANCE);
+    const offTarget = spokenMin < target * (1 - LENGTH_TOLERANCE) || spokenMin > target * (1 + LENGTH_TOLERANCE);
     if (offTarget && !inHouse) {
       warn(
-        `estimated runtime ~${Math.round(totalMin)} min is off target_minutes=${target} ` +
+        `spoken runtime ~${Math.round(spokenMin)} min is off target_minutes=${target} ` +
           `and outside the ${HOUSE_MIN_MINUTES}–${HOUSE_MAX_MINUTES} min house range`,
       );
     }
   } else if (!inHouse) {
-    warn(`estimated runtime ~${Math.round(totalMin)} min is outside the ${HOUSE_MIN_MINUTES}–${HOUSE_MAX_MINUTES} min house range`);
+    warn(`spoken runtime ~${Math.round(spokenMin)} min is outside the ${HOUSE_MIN_MINUTES}–${HOUSE_MAX_MINUTES} min house range`);
   }
 
   // 3. STATION IDENT. The intro (first spoken slot) must name the station.

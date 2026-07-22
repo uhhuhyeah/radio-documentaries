@@ -11,8 +11,8 @@ const RESEARCH =
   "## Track Lyrics (VERBATIM — the ONLY source for quoting lyrics)\n\n" +
   "### Kyoto\n\nDreaming through Tokyo skyline\nI wanted to see the world\n";
 
-// ~16 min of spoken words + 2 songs (~8 min) ≈ 24 min → inside the house range.
-const filler = Array(2400).fill("word").join(" ");
+// ~22 spoken minutes at WORDS_PER_MINUTE (150) → inside the 20–30 min house range.
+const filler = Array(3300).fill("word").join(" ");
 const FRONT =
   'season: 1\nepisode: 1\nalbum: "Punisher"\nartist: "Phoebe Bridgers"\n' +
   'host: p_jools\nhost_name: "Jools"\nmodel: eleven_flash_v2_5\n' +
@@ -83,6 +83,28 @@ describe("length", () => {
   it("flags a too-short script", () => {
     const f = qa.qaText(script(INTRO_OK, "A very short body indeed."), RESEARCH);
     expect(has(f, "WARN", "runtime")).toBe(true);
+  });
+
+  it("does not flag ~22 spoken min even with four SONG slots (regression: songs are not spoken time)", () => {
+    // ~22 spoken min is squarely in range; the old spoken+songs estimate (22 + 4×4 = ~38 min)
+    // would have exceeded 30 and warned. Spoken time alone must not.
+    const body = Array(3300).fill("word").join(" ");
+    const fourSongs =
+      `---\n` +
+      'season: 1\nepisode: 2\nalbum: "A"\nartist: "B"\n' +
+      'host: p_jools\nhost_name: "Jools"\nmodel: eleven_flash_v2_5\n' +
+      "target_minutes: 25\nreference_tracks: 4\n" +
+      `---\n\n` +
+      `## [01] SPOKEN · intro\n${INTRO_OK} ${body}\n\n` +
+      `## [02] SONG · song-1\n- title: "Kyoto"\n\n` +
+      `## [03] SPOKEN · part-1\nA short bridge.\n\n` +
+      `## [04] SONG · song-2\n- title: "Garden Song"\n\n` +
+      `## [05] SPOKEN · part-2\nAnother short bridge.\n\n` +
+      `## [06] SONG · song-3\n- title: "Punisher"\n\n` +
+      `## [07] SPOKEN · part-3\nOne more bridge.\n\n` +
+      `## [08] SONG · song-4\n- title: "I Know the End"\n\n` +
+      `## [09] SPOKEN · outro\nThanks for listening.\n`;
+    expect(has(qa.qaText(fourSongs, RESEARCH), "WARN", "runtime")).toBe(false);
   });
 });
 

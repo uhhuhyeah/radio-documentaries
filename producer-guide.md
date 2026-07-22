@@ -183,3 +183,5 @@ Response body is raw MP3 bytes → write straight to `sXXeXX_N_label.mp3`. (An o
 2. **Album source** — the cron pops the next `planned` row from `seasons.md`. **This is why season planning matters: the plan is the automation queue.**
 3. **ElevenLabs budget** — ~10k credits/episode against a shared 30k/mo plan → budget-check with a confirm or hard cap before spending.
 4. **QC blockers** — if the Writer logs a `[blocker]` in `qc-issues.md`, the run **halts and notifies** rather than proceeding on guesses.
+
+**Hermes-driven path:** when the orchestrator is Hermes over MCP (not the local `run` driver), its operating manual is [`hermes-playbook.md`](hermes-playbook.md) — the phase model, gate-reading rules, retry/hold/escalate policy, and the Telegram handoff format. `PRODUCER_SYSTEM` stays the source of truth for the flow order.

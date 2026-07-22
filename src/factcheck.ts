@@ -21,12 +21,52 @@ import * as sm from "./scriptmodel";
 
 export type Severity = "CONTRADICTION" | "UNSUPPORTED";
 
+/** What kind of album/making-of fact the finding is about, to help downstream triage. */
+export type Category = "gear" | "credit" | "date" | "history" | "other";
+
+/** How sure the checker is. Optional — omitted when the model doesn't supply it. */
+export type Confidence = "high" | "medium" | "low";
+
 export interface ScriptFinding {
   severity: Severity;
   /** The exact phrase from the script the finding is about. */
   quote: string;
   /** One sentence: what the research says vs. what the script claims. */
   issue: string;
+  /** Coarse bucket for triage. Defaults to "other" when the model omits it. */
+  category: Category;
+  /** Optional self-reported confidence. Absent when the model doesn't supply a valid value. */
+  confidence?: Confidence;
+}
+
+const CATEGORIES: readonly Category[] = ["gear", "credit", "date", "history", "other"];
+const CONFIDENCES: readonly Confidence[] = ["high", "medium", "low"];
+
+/**
+ * Normalize text for verbatim quote matching: unify smart quotes/apostrophes,
+ * collapse all whitespace to single spaces, lowercase, and trim. Pure.
+ */
+export function normalizeForMatch(text: string): string {
+  return text
+    .replace(/[‘’‛′]/g, "'")
+    .replace(/[“”‟″]/g, '"')
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Deterministic verbatim-quote guard. Drops any finding whose `quote` does NOT
+ * appear (as a normalized substring) in the script's spoken text. This kills
+ * hallucinated findings — the checker's real failure mode was inventing a quote
+ * that was never in the script. Pure.
+ */
+export function dropUnquotedFindings(findings: ScriptFinding[], scriptText: string): ScriptFinding[] {
+  const haystack = normalizeForMatch(scriptText);
+  return findings.filter((f) => {
+    const needle = normalizeForMatch(f.quote);
+    return needle.length > 0 && haystack.includes(needle);
+  });
 }
 
 /**
@@ -53,7 +93,13 @@ export function parseFindings(reply: string): ScriptFinding[] {
     const severity = o.severity === "CONTRADICTION" || o.severity === "UNSUPPORTED" ? o.severity : null;
     const quote = typeof o.quote === "string" ? o.quote.trim() : "";
     const issue = typeof o.issue === "string" ? o.issue.trim() : "";
-    if (severity && quote && issue) out.push({ severity, quote, issue });
+    const category = CATEGORIES.includes(o.category as Category) ? (o.category as Category) : "other";
+    const confidence = CONFIDENCES.includes(o.confidence as Confidence) ? (o.confidence as Confidence) : undefined;
+    if (severity && quote && issue) {
+      const finding: ScriptFinding = { severity, quote, issue, category };
+      if (confidence) finding.confidence = confidence;
+      out.push(finding);
+    }
   }
   // Contradictions (a stated fact conflicting with the notes) outrank unsupported ones.
   return out.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "CONTRADICTION" ? -1 : 1));
@@ -82,7 +128,9 @@ export async function factCheckScript(
     spoken,
   ].join("\n");
 
-  return parseFindings(await complete(SCRIPT_FACTCHECK_SYSTEM, user, model));
+  const findings = parseFindings(await complete(SCRIPT_FACTCHECK_SYSTEM, user, model));
+  // Deterministic guard: drop any finding whose quote isn't actually in the spoken script.
+  return dropUnquotedFindings(findings, spoken);
 }
 
 /** File wrapper for the CLI / Producer tool. */

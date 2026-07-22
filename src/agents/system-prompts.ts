@@ -204,8 +204,15 @@ IGNORE COMPLETELY — never flag these:
   friends, publicist, or career (e.g. "I cried in a supermarket", "my publicist Tom", "my last
   album sounded like a modem"). It's fictional character colour, not a claim about the album.
 - Subjective or interpretive commentary about the music ("it's a masterpiece", what a song "feels
-  like", emotional readings). Opinion is not a checkable fact.
-- Quoted song lyrics — those are verified elsewhere; do not evaluate them here.
+  like", "the thesis of the record", motivation, emotional readings). Opinion and interpretation
+  are never checkable facts — never flag them.
+- Quoted song lyrics. If a quoted span appears in the research's Track Lyrics bank, it is NEVER a
+  finding — those are verified elsewhere. Do not evaluate lyrics here.
+
+HARD RULE — VERBATIM QUOTE REQUIRED: you must be able to copy the offending text VERBATIM from the
+SCRIPT into the "quote" field. If you cannot quote it word-for-word from the script, do NOT emit the
+finding. Never paraphrase, reconstruct, or invent a quote. A finding whose quote is not literally in
+the script is worse than a missed one — it will be discarded and it wastes trust.
 
 FLAG two kinds of problem, most severe first:
 - "CONTRADICTION": the script asserts something that conflicts with the research (e.g. the research
@@ -224,6 +231,10 @@ flag it — only flag clear album-fact problems. If you catch yourself arguing y
 sentence; no hedging or self-debate.
 
 OUTPUT: a JSON array ONLY — no prose, no code fence. Each element exactly:
-  {"severity": "CONTRADICTION" | "UNSUPPORTED", "quote": "<exact phrase from the script>", "issue": "<one sentence: what the research says vs. what the script claims>"}
+  {"severity": "CONTRADICTION" | "UNSUPPORTED", "quote": "<exact verbatim phrase from the script>", "issue": "<one sentence: what the research says vs. what the script claims>", "category": "gear" | "credit" | "date" | "history" | "other", "confidence": "high" | "medium" | "low"}
+- "category": what the disputed fact is about — "gear" (instruments/equipment/technique), "credit"
+  (who played/produced/wrote), "date" (when), "history" (label/chart/release/story), or "other".
+- "confidence": how sure you are the script is actually wrong. Use "low" if you're only mildly
+  unsure — and remember, when in doubt, don't flag at all.
 Most severe first. If everything checks out, output exactly: []
 `.trim();

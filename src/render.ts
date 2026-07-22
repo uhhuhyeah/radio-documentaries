@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import NodeID3 from "node-id3";
 
 import { config } from "./config";
+import { assertCreditGuard } from "./credit";
 import { apiKeyFromEnv, ElevenLabsError, synthesize, ttsBody } from "./elevenlabs";
 import * as sm from "./scriptmodel";
 
@@ -185,6 +186,12 @@ export interface RenderOptions {
   model?: string;
   /** Render only the spoken slot with this label (e.g. "part-1"). For sampling one segment. */
   onlyLabel?: string;
+  /** Skip the credit hard-stop (balance + per-episode cap). Default OFF — the guard runs. */
+  skipCreditGuard?: boolean;
+  /** Per-episode credit cap for the guard. Default: config.budget.perEpisodeCap. */
+  perEpisodeCap?: number;
+  /** With the guard on, proceed on a FAILED balance query (cap-only). Default OFF (fail-closed). */
+  allowUnknownBalance?: boolean;
 }
 
 export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}): Promise<RenderResult> {
@@ -200,6 +207,16 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
   const plan = planEpisode(ep);
   const albumTag = `S${pad2(plan.season)}E${pad2(plan.episode)} — ${ep.frontMatter.album} (Making Of)`;
   const apiKey = opts.apiKey ?? apiKeyFromEnv();
+
+  // Credit hard-stop — BEFORE any TTS call, so a render that can't finish (or blows
+  // the per-episode cap) throws up front and no partial episode is ever written.
+  // Estimates the FULL episode's credit need (conservative even for a sample).
+  if (!opts.skipCreditGuard) {
+    await assertCreditGuard(scriptPath, modelId, apiKey, opts.perEpisodeCap ?? config.budget.perEpisodeCap, {
+      allowUnknownBalance: opts.allowUnknownBalance,
+    });
+  }
+
   const audioDir = opts.audioDir ?? join(dirname(scriptPath), "audio");
   mkdirSync(audioDir, { recursive: true });
 

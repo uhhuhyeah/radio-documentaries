@@ -37,11 +37,27 @@ describe("loadConfig", () => {
     expect(c.voices.p_cara).toEqual({ voiceId: "VID_CARA", speed: 1.2 });
   });
 
+  it("parses the per-episode credit cap", () => {
+    const p = tmpToml("[budget]\nper_episode_cap = 9000\n");
+    expect(loadConfig(p).budget.perEpisodeCap).toBe(9000);
+  });
+
   it("falls back to defaults when the file is absent", () => {
     const c = loadConfig("/nonexistent/settings.toml");
     expect(c.models.write).toContain("qwen");
     expect(c.elevenlabs.model).toBe("eleven_flash_v2_5");
     expect(c.voices.p_cara?.voiceId).toBeTruthy();
+    expect(c.budget.perEpisodeCap).toBe(15000);
+  });
+
+  it("env var overrides the per-episode cap", () => {
+    const p = tmpToml("[budget]\nper_episode_cap = 9000\n");
+    process.env.DOCS_PER_EPISODE_CAP = "500";
+    try {
+      expect(loadConfig(p).budget.perEpisodeCap).toBe(500);
+    } finally {
+      delete process.env.DOCS_PER_EPISODE_CAP;
+    }
   });
 
   it("env var overrides the toml value", () => {

@@ -153,8 +153,10 @@ Before Hermes can drive anything, we need a clean surface for it to call and a n
 - **Acceptance:** Hermes (CTID 105) lists + calls the pipeline tools over HTTP with the bearer header;
   a dry "assign → research" works end to end; an omitted tool is not visible to Hermes.
 - **Depends on:** none (pairs with T0-2 for `run_status`).
-- **Note:** confirm the **installed Hermes v0.15.1** actually has HTTP-client MCP + `tools.include`
-  filtering (docs describe `main`); `hermes update` if not (container is disposable). See T0-3.
+- **Verified on the running box (2026-07-21):** installed **Hermes v0.15.1** has HTTP-client MCP
+  (`hermes mcp add --url`), header/bearer auth (`--auth header`), and tool filtering
+  (`hermes mcp configure`), and reports "Up to date" — no update needed. Bring-up: `hermes mcp add
+  subwave-pipeline --url … --auth header` → `hermes mcp configure` (Phase-0 filter) → `hermes mcp test`.
 
 ### T0-2 — Run ledger & idempotency state
 - **Goal:** a per-episode run record so any run is inspectable and resumable, and Hermes can reason
@@ -443,8 +445,11 @@ autonomy (folds into the approval-gate rollout), notifications (Telegram), fact-
 3. **Hermes ↔ MCP wiring — SPIKED 2026-07-21 (see T0-1/T2-4).** `hermes-agent` connects to a remote
    HTTP MCP server via `mcp_servers.<name>.url` + `headers` bearer; `tools.include`/`exclude` filters
    what Hermes sees. Key finding: **MCP tools auto-execute (no approval prompt)**, so the money gate
-   is enforced by omitting render/stage/publish from `tools.include`, not by Hermes pausing. *Residual
-   to verify:* that the installed **v0.15.1** (docs describe `main`) has HTTP-client MCP + `include`
-   filtering — read-only check on CTID 105, `hermes update` if behind.
+   is enforced by omitting render/stage/publish from `tools.include`, not by Hermes pausing.
+   **VERIFIED on CTID 105 (2026-07-21):** v0.15.1 has it — `hermes mcp add --url` ("HTTP/SSE endpoint
+   URL"), `--auth header` (bearer), `hermes mcp configure` (tool selection), `hermes mcp test`; and it
+   reports "Up to date" so no update needed. Register with:
+   `hermes mcp add subwave-pipeline --url http://<lxc-ip>:<port>/mcp --auth header` → set the bearer →
+   `hermes mcp configure` (omit render/stage/publish for Phase 0) → `hermes mcp test`.
 4. **Trigger UX.** Phase 0 = Telegram-only ("make the next episode" / "make S01E03")? Keep the
    `docuflow` CLI as the manual fallback? A real cron schedule is deferred to T3-4.

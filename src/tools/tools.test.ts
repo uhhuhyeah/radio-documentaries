@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { budgetEstimateTool, catalogNextTool, lintScriptTool } from "./index";
+import * as catalog from "../catalog";
+import { budgetEstimateTool, lintScriptTool } from "./index";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "__fixtures__");
 
@@ -39,10 +40,22 @@ describe("budget_estimate tool", () => {
   });
 });
 
-describe("catalog_next tool", () => {
-  it("returns a number for the active season", async () => {
-    const res = await run(catalogNextTool, {});
-    expect(typeof res.details.next).toBe("number");
-    expect(res.details.next).toBeGreaterThanOrEqual(1);
+// catalog_next's tool wrapper reads the git-ignored local seasons.md
+// (catalog.DEFAULT_PATH), which is absent on a fresh clone / in CI. Exercise the
+// same read → activeSeason → nextEpisode path the tool uses, but against a
+// checked-in fixture so the suite is green without the local file.
+describe("catalog next-episode", () => {
+  const text = catalog.read(join(FIX, "seasons.md"));
+
+  it("resolves the next episode for the active season", () => {
+    const season = catalog.activeSeason(text);
+    expect(season).toBe(2);
+    // Season 2 has Ep 01 and 02 in the fixture → next is 3.
+    expect(catalog.nextEpisode(text, season)).toBe(3);
+  });
+
+  it("resolves the next episode for an explicit season", () => {
+    // Season 1 has only Ep 01 → next is 2.
+    expect(catalog.nextEpisode(text, 1)).toBe(2);
   });
 });

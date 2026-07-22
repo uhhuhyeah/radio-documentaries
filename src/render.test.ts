@@ -1,11 +1,12 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ttsBody, ttsUrl, voiceSettings } from "./elevenlabs";
-import { planEpisode, sanitizeForTts } from "./render";
+import { planEpisode, reconcileAudioDir, sanitizeForTts } from "./render";
 import * as sm from "./scriptmodel";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
@@ -42,6 +43,57 @@ describe("planEpisode", () => {
     expect(song.song?.title).toBe("Kyoto");
     expect(song.file).toBeUndefined();
     expect(plan.cue[0]!.file).toBe("s01e01_01_intro.mp3");
+  });
+});
+
+describe("reconcileAudioDir", () => {
+  let dir: string;
+  const touch = (name: string) => writeFileSync(join(dir, name), "x");
+  const listMp3 = () => readdirSync(dir).filter((f) => f.endsWith(".mp3")).sort();
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "reconcile-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("deletes orphaned segments the current plan no longer produces", () => {
+    const expected = planEpisode(clean()).steps.map((s) => s.filename);
+    // A real plan file that survives, plus orphans from a pre-restructure render
+    // (the shape of the S01E01-punisher stragglers: indices/labels the new plan
+    // no longer emits).
+    touch("s01e01_01_intro.mp3"); // in the plan → kept
+    for (const f of ["s01e01_07_part-4.mp3", "s01e01_09_part-5.mp3", "s01e01_11_conclusion.mp3"]) touch(f);
+
+    const removed = reconcileAudioDir(dir, expected).sort();
+
+    expect(removed).toEqual(["s01e01_07_part-4.mp3", "s01e01_09_part-5.mp3", "s01e01_11_conclusion.mp3"]);
+    // intro survives (still in the plan); nothing outside the plan is left on disk.
+    expect(listMp3()).toEqual(["s01e01_01_intro.mp3"]);
+  });
+
+  it("keeps every file the plan produces, deleting nothing when the dir already matches", () => {
+    const expected = planEpisode(clean()).steps.map((s) => s.filename);
+    for (const f of expected) touch(f);
+
+    expect(reconcileAudioDir(dir, expected)).toEqual([]);
+    expect(listMp3()).toEqual([...expected].sort());
+  });
+
+  it("leaves non-mp3 sidecar files (rundown.json, .keep) untouched", () => {
+    touch("s01e01_99_stale.mp3");
+    writeFileSync(join(dir, "rundown.json"), "{}");
+    writeFileSync(join(dir, ".keep"), "");
+
+    const removed = reconcileAudioDir(dir, []);
+
+    expect(removed).toEqual(["s01e01_99_stale.mp3"]);
+    expect(readdirSync(dir).sort()).toEqual([".keep", "rundown.json"]);
+  });
+
+  it("returns empty (no throw) when the audio dir does not exist yet", () => {
+    expect(reconcileAudioDir(join(dir, "nope"), ["a.mp3"])).toEqual([]);
   });
 });
 

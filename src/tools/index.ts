@@ -14,7 +14,7 @@ import * as budget from "../budget";
 import * as catalog from "../catalog";
 import { factCheckFiles } from "../factcheck";
 import * as lint from "../lint";
-import { clientFromEnv, songsOfAlbum } from "../navidrome";
+import { clientFromEnv, songsOfAlbum, waitForScan } from "../navidrome";
 import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "../preflight";
 import * as qa from "../qa";
 import { renderEpisode } from "../render";
@@ -251,6 +251,26 @@ export const navidromeScanStatusTool = defineTool({
   },
 });
 
+export const waitScanTool = defineTool({
+  name: "wait_scan",
+  label: "Navidrome: wait for rescan",
+  description:
+    "Block until Navidrome's library rescan settles (scanning:false) or a timeout elapses. Run AFTER " +
+    "stage_audio(rescan=true) and BEFORE publish so publishing never races a half-scanned library. " +
+    "Throws on timeout. Defaults: timeout 120s, poll every 2s.",
+  parameters: Type.Object({
+    timeoutSec: Type.Optional(Type.Number({ description: "Max seconds to wait for the rescan to finish (default 120)." })),
+    intervalSec: Type.Optional(Type.Number({ description: "Seconds between scan-status polls (default 2)." })),
+  }),
+  execute: async (_id, params) => {
+    const st = await waitForScan(clientFromEnv(), {
+      timeoutMs: params.timeoutSec !== undefined ? params.timeoutSec * 1000 : undefined,
+      intervalMs: params.intervalSec !== undefined ? params.intervalSec * 1000 : undefined,
+    });
+    return result(`scan settled: ${JSON.stringify(st)}`, st);
+  },
+});
+
 export const navidromeCreatePlaylistTool = defineTool({
   name: "navidrome_create_playlist",
   label: "Navidrome: create playlist",
@@ -271,15 +291,20 @@ export const stageAudioTool = defineTool({
   description:
     "Copy an episode's rendered MP3s from its working dir onto the NAS Music share (via the read-write " +
     "PVE host) so Navidrome can index them. Pass replace=true to mirror (remove stale files) when " +
-    "re-publishing, rescan=true to trigger a Navidrome scan afterward. Run before navidrome publish.",
+    "re-publishing, rescan=true to trigger a Navidrome scan afterward, wait=true to also block until " +
+    "that rescan settles (so publish is safe next). Run before navidrome publish.",
   parameters: Type.Object({
     workdir: Type.String({ description: "Episode working dir, e.g. S01E01-punisher" }),
     replace: Type.Optional(Type.Boolean({ description: "Mirror: remove NAS files not in the local audio dir." })),
     rescan: Type.Optional(Type.Boolean({ description: "Trigger a Navidrome rescan after copying." })),
+    wait: Type.Optional(Type.Boolean({ description: "With rescan: block until the rescan settles before returning." })),
   }),
   execute: async (_id, params) => {
-    const r = await stageAudio(params.workdir, { replace: params.replace, rescan: params.rescan });
-    return result(`staged ${r.files} file(s) → ${r.host}:${r.dest}${r.rescanned ? " (rescan triggered)" : ""}`, r);
+    const r = await stageAudio(params.workdir, { replace: params.replace, rescan: params.rescan, wait: params.wait });
+    return result(
+      `staged ${r.files} file(s) → ${r.host}:${r.dest}${r.rescanned ? " (rescan triggered)" : ""}${r.waited ? " (settled)" : ""}`,
+      r,
+    );
   },
 });
 
@@ -301,5 +326,6 @@ export const documentaryTools = [
   navidromeFindAlbumTool,
   navidromeAlbumSongsTool,
   navidromeScanStatusTool,
+  waitScanTool,
   navidromeCreatePlaylistTool,
 ];

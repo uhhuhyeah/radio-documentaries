@@ -13,7 +13,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { config } from "./config";
-import { clientFromEnv } from "./navidrome";
+import { clientFromEnv, waitForScan } from "./navidrome";
 
 /** Remote folder for an episode: <musicDir>/<workdir-basename lowercased>. Pure. */
 export function stageDest(workdir: string, musicDir: string): string {
@@ -23,6 +23,9 @@ export function stageDest(workdir: string, musicDir: string): string {
 export interface StageOptions {
   replace?: boolean; // mirror: remove files on the NAS that aren't in the local audio dir
   rescan?: boolean; // trigger a Navidrome rescan after copying
+  wait?: boolean; // with rescan: block until the rescan settles (so publish isn't run against a half-scanned library)
+  timeoutMs?: number; // waitForScan timeout (default 120s)
+  intervalMs?: number; // waitForScan poll interval (default 2s)
   sshHost?: string;
   musicDir?: string;
 }
@@ -33,6 +36,7 @@ export interface StageResult {
   files: number;
   replaced: boolean;
   rescanned: boolean;
+  waited: boolean;
 }
 
 export async function stageAudio(workdir: string, opts: StageOptions = {}): Promise<StageResult> {
@@ -57,11 +61,19 @@ export async function stageAudio(workdir: string, opts: StageOptions = {}): Prom
   execFileSync("rsync", rsyncArgs, { stdio: "inherit" });
 
   // Optionally make Navidrome index the new files (else it picks them up on its hourly scan).
+  // The flow is stage → rescan → WAIT → publish: with `wait`, block here until the rescan
+  // settles so the caller (or Hermes) can publish immediately without racing a half-scan.
   let rescanned = false;
+  let waited = false;
   if (opts.rescan) {
-    await clientFromEnv().startScan();
+    const client = clientFromEnv();
+    await client.startScan();
     rescanned = true;
+    if (opts.wait) {
+      await waitForScan(client, { timeoutMs: opts.timeoutMs, intervalMs: opts.intervalMs });
+      waited = true;
+    }
   }
 
-  return { host, dest, files: mp3s.length, replaced: !!opts.replace, rescanned };
+  return { host, dest, files: mp3s.length, replaced: !!opts.replace, rescanned, waited };
 }

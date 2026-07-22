@@ -10,6 +10,7 @@
  *   pnpm cli qa     --script path/to/script.md --research path/to/research.md
  *   pnpm cli budget path/to/script.md [--cap 15000]
  *   pnpm cli navidrome ping | find-album --album A [--artist B] | album-songs --id ID | scan-status
+ *   pnpm cli wait-scan [--timeout Ns] [--interval Ns]   # block until a rescan settles, then publish
  *
  * The deterministic tools these wrap are also exposed to the Producer agent as
  * Pi tools (see src/tools/). This CLI is for humans and smoke-testing.
@@ -386,16 +387,42 @@ async function main(): Promise<number> {
       return 2;
     }
     try {
-      const r = await stageAudio(sub, { replace: rest.includes("--replace"), rescan: rest.includes("--rescan") });
+      const r = await stageAudio(sub, {
+        replace: rest.includes("--replace"),
+        rescan: rest.includes("--rescan"),
+        wait: rest.includes("--wait"), // block until the rescan settles, so `publish` is safe next
+      });
       console.log(
         `staged ${r.files} file(s) → ${r.host}:${r.dest}` +
           (r.replaced ? " (mirrored — stale files removed)" : "") +
-          (r.rescanned ? "; Navidrome rescan triggered" : ""),
+          (r.rescanned ? "; Navidrome rescan triggered" : "") +
+          (r.waited ? "; rescan settled" : ""),
       );
       if (!r.rescanned) console.log("  next: `pnpm cli navidrome scan` (or re-run with --rescan), then `publish`");
+      else if (!r.waited) console.log("  next: `pnpm cli wait-scan` (or re-run with --wait), then `publish`");
       return 0;
     } catch (e) {
       console.error(`stage-audio error: ${String(e)}`);
+      return 1;
+    }
+  }
+
+  if (cmd === "wait-scan") {
+    // Poll getScanStatus until Navidrome's rescan settles (or a timeout). Run
+    // between `stage-audio --rescan` and `publish` so publish never races a half-scan.
+    const a = [sub, ...rest].filter((x): x is string => !!x);
+    const timeoutArg = flag(a, "timeout");
+    const intervalArg = flag(a, "interval");
+    try {
+      const client = navidrome.clientFromEnv(join(REPO_ROOT, ".env"));
+      const st = await navidrome.waitForScan(client, {
+        timeoutMs: timeoutArg !== undefined ? parseFloat(timeoutArg) * 1000 : undefined,
+        intervalMs: intervalArg !== undefined ? parseFloat(intervalArg) * 1000 : undefined,
+      });
+      console.log(`scan settled: ${JSON.stringify(st)}`);
+      return 0;
+    } catch (e) {
+      console.error(`wait-scan error: ${String(e)}`);
       return 1;
     }
   }
@@ -422,7 +449,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  console.error("usage: catalog | preflight | lint | qa | budget | render | stage-audio | publish | navidrome | web-search | web-fetch (see header)");
+  console.error("usage: catalog | preflight | lint | qa | budget | render | stage-audio | wait-scan | publish | navidrome | web-search | web-fetch (see header)");
   return 2;
 }
 

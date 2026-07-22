@@ -53,7 +53,8 @@ A trigger looks like: *"Making of \<album> by \<artist>, \<host> to host"* (host
 
 | # | Step | Tool | Gate? |
 |---|------|------|-------|
-| 0 | Preflight the album is producible | `preflight` | **HARD** — see below |
+| 0a | If no album named ("make the next episode"): pick the next **planned** row | `catalog_next_planned` | — |
+| 0b | Preflight the album is producible | `preflight` | **HARD** — see below |
 | 1 | Reserve the episode → get the absolute `workdir` | `catalog_assign` | — |
 | 2 | **Start** research into `research.md`, then poll until done | `research_album` → `wait_research` | see below |
 | 3 | Write the script from ONLY those notes | `write_script` | — |
@@ -68,6 +69,11 @@ A trigger looks like: *"Making of \<album> by \<artist>, \<host> to host"* (host
 | 11 | Copy to NAS + trigger rescan, **wait** for it | `stage_audio(rescan, wait)` | — |
 | 12 | Resolve ids, create playlist in cue order | `navidrome_find_album` → `navidrome_album_songs` → `navidrome_create_playlist` | — |
 | 13 | Mark published with the date | `catalog_set_status(…, "published", <date>)` | — |
+
+**"What's next" = the next `planned` row.** When asked to make the next episode with no album named,
+call `catalog_next_planned` and use the album/artist/host it returns. Do **not** use `catalog_next` —
+that returns the number to *append* a brand-new episode (max + 1), which for a pre-planned queue is
+not what's next and only sows confusion.
 
 **Paths are the pipeline's, not yours.** `catalog_assign` returns an absolute `workdir` on the
 pipeline host; pass it (and `<workdir>/research.md`, `<workdir>/script.md`) verbatim to every step.

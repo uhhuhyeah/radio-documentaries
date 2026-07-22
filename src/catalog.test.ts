@@ -78,6 +78,37 @@ describe("read", () => {
   });
 });
 
+describe("nextPlanned", () => {
+  // Season 3: two done rows then two planned — the FIRST planned wins, and it's
+  // distinct from nextEpisode (the append counter).
+  const planned = [
+    "**Active season: 3**",
+    "",
+    "## Season 3",
+    "",
+    "| Ep | Album | Artist | Host | Status | Dir | Published |",
+    "| -- | ----- | ------ | ---- | ------ | --- | --------- |",
+    "| 01 | A | X | Cara | published | S03E01-a | 2026-02-01 |",
+    "| 02 | B | Y | Jools | recorded | S03E02-b | — |",
+    "| 03 | C | Z | Cara | planned | — | — |",
+    "| 04 | D | W | Jools | planned | — | — |",
+    "",
+  ].join("\n");
+
+  it("returns the first planned row, not the append number", () => {
+    const row = catalog.nextPlanned(planned, 3);
+    expect(row?.ep).toBe(3);
+    expect(row?.album).toBe("C");
+    // append counter would be 5 — deliberately different from the planned answer.
+    expect(catalog.nextEpisode(planned, 3)).toBe(5);
+  });
+
+  it("returns null when nothing is planned", () => {
+    const done = planned.replace(/planned/g, "published");
+    expect(catalog.nextPlanned(done, 3)).toBeNull();
+  });
+});
+
 describe("assign — append", () => {
   it("replaces the placeholder", () => {
     const p = tmpCatalog();

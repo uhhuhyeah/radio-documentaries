@@ -141,11 +141,24 @@ export function rowsForSeason(text: string, season: number): Row[] {
   return out;
 }
 
+/**
+ * The next episode NUMBER to append a new/unplanned episode: max existing + 1 (1 if none).
+ * This is NOT "the next episode to produce" — for a planned queue that's `nextPlanned`.
+ */
 export function nextEpisode(text: string, season: number): number {
   const eps = rowsForSeason(text, season)
     .map((r) => r.ep)
     .filter((e): e is number => e !== null);
   return eps.length ? Math.max(...eps) + 1 : 1;
+}
+
+/**
+ * The next episode to PRODUCE: the first row in the season still marked `planned`
+ * (queue order = row order). `null` when nothing is planned. This is the answer to
+ * "what's next?" — distinct from `nextEpisode` (the append counter).
+ */
+export function nextPlanned(text: string, season: number): Row | null {
+  return rowsForSeason(text, season).find((r) => r.status.toLowerCase() === "planned") ?? null;
 }
 
 function formatRow(ep: number, album: string, artist: string, host: string,

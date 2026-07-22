@@ -29,6 +29,7 @@ import * as navidrome from "./navidrome";
 import { loadDotenv, songsOfAlbum } from "./navidrome";
 import { publishEpisode } from "./publish";
 import { renderEpisode } from "./render";
+import { stageAudio } from "./stage";
 import { gatherAlbumLyrics } from "./tools/lyrics";
 import { webFetchText, webSearch } from "./tools/web";
 
@@ -337,6 +338,26 @@ async function main(): Promise<number> {
     }
   }
 
+  if (cmd === "stage-audio") {
+    if (!sub) {
+      console.error("stage-audio requires an episode dir, e.g. pnpm cli stage-audio S01E01-punisher [--replace] [--rescan]");
+      return 2;
+    }
+    try {
+      const r = await stageAudio(sub, { replace: rest.includes("--replace"), rescan: rest.includes("--rescan") });
+      console.log(
+        `staged ${r.files} file(s) → ${r.host}:${r.dest}` +
+          (r.replaced ? " (mirrored — stale files removed)" : "") +
+          (r.rescanned ? "; Navidrome rescan triggered" : ""),
+      );
+      if (!r.rescanned) console.log("  next: `pnpm cli navidrome scan` (or re-run with --rescan), then `publish`");
+      return 0;
+    } catch (e) {
+      console.error(`stage-audio error: ${String(e)}`);
+      return 1;
+    }
+  }
+
   if (cmd === "web-search") {
     const query = [sub, ...rest].filter(Boolean).join(" ");
     if (!query) {
@@ -359,7 +380,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  console.error("usage: catalog | lint | budget | render | navidrome | web-search | web-fetch (see header)");
+  console.error("usage: catalog | lint | budget | render | stage-audio | publish | navidrome | web-search | web-fetch (see header)");
   return 2;
 }
 

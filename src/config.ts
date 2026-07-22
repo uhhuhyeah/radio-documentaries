@@ -21,6 +21,8 @@ export interface Config {
   models: { research: string; write: string; producer: string; verify: string; timeoutMs: number };
   elevenlabs: { model: string };
   voices: Record<string, VoiceConfig>;
+  /** How rendered audio is copied onto the NAS Music share (Navidrome's own mount is read-only). */
+  nas: { sshHost: string; musicDir: string };
 }
 
 const DEFAULTS: Config = {
@@ -36,6 +38,8 @@ const DEFAULTS: Config = {
     p_cara: { voiceId: "ZF6FPAbjXT4488VcRRnw", speed: 1.1 },
     p_jools: { voiceId: "1BUhH8aaMvGMUdGAmWVM", speed: 1.0 },
   },
+  // The PVE host has the NAS Music share mounted read-write; Navidrome's LXC mount is read-only.
+  nas: { sshHost: "root@100.110.0.9", musicDir: "/mnt/nas/music/subwave-documentaries" },
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -59,6 +63,10 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
     },
     elevenlabs: { model: el.model ?? DEFAULTS.elevenlabs.model },
     voices: Object.keys(voices).length ? voices : DEFAULTS.voices,
+    nas: {
+      sshHost: process.env.DOCS_NAS_SSH_HOST ?? raw.nas?.ssh_host ?? DEFAULTS.nas.sshHost,
+      musicDir: process.env.DOCS_NAS_MUSIC_DIR ?? raw.nas?.music_dir ?? DEFAULTS.nas.musicDir,
+    },
   };
 }
 

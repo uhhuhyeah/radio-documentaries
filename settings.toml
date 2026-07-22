@@ -46,6 +46,12 @@ music_dir = "/mnt/nas/music/subwave-documentaries"
 [mcp]
 port = 8848
 
+# Where the pipeline creates episode working dirs (research.md, script.md, audio/…). The tools own
+# this path so a remote orchestrator (Hermes) never invents one. Defaults to the repo root; set it
+# (or DOCS_WORK_DIR) to a service-user-writable dir if the repo checkout isn't writable on a box.
+# [work]
+# dir = "/opt/radio-documentaries"
+
 # Per-persona ElevenLabs voice (from subwave-config). Keys are persona ids.
 [voices.p_cara]
 voice_id = "ZF6FPAbjXT4488VcRRnw"  # "Amelia"

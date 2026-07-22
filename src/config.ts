@@ -41,6 +41,14 @@ export interface Config {
   nas: { sshHost: string; musicDir: string; local: boolean };
   /** The MCP HTTP server (src/mcp.ts). Port only — the bearer token stays env-only (secret). */
   mcp: { port: number };
+  /**
+   * Base directory the pipeline creates episode working dirs under (research.md, script.md,
+   * audio/…). The tools own this path so a REMOTE orchestrator (Hermes, on another host) never
+   * has to invent a filesystem path — catalog_assign returns `<dir>/<episode>` and the tools
+   * mkdir it. Default: the repo root (matches where episodes have always lived); override with
+   * DOCS_WORK_DIR on a box where the repo dir isn't writable by the service user.
+   */
+  work: { dir: string };
 }
 
 const DEFAULTS: Config = {
@@ -65,6 +73,9 @@ const DEFAULTS: Config = {
   nas: { sshHost: "root@100.110.0.9", musicDir: "/mnt/nas/music/subwave-documentaries", local: false },
   // MCP HTTP server port. Hermes (CTID 105) connects to it as a remote toolset over the LAN.
   mcp: { port: 8848 },
+  // Episode working dirs are created under the repo root by default (where they've always lived).
+  // DOCS_WORK_DIR overrides it if the service user can't write the repo dir on a given box.
+  work: { dir: REPO_ROOT },
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -103,6 +114,9 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
     },
     mcp: {
       port: Number(process.env.DOCS_MCP_PORT ?? mcp.port ?? DEFAULTS.mcp.port),
+    },
+    work: {
+      dir: process.env.DOCS_WORK_DIR ?? raw.work?.dir ?? DEFAULTS.work.dir,
     },
   };
 }

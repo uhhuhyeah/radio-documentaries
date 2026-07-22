@@ -6,6 +6,8 @@
  * Pi's AgentToolResult: a text summary (for the model) plus structured `details`.
  */
 
+import { join } from "node:path";
+
 import { Type } from "typebox";
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
@@ -88,8 +90,11 @@ export const catalogAssignTool = defineTool({
   name: "catalog_assign",
   label: "Catalog: assign episode",
   description:
-    "Claim a matching planned row or append the next episode, setting it in-production. " +
-    "Returns the assigned season/episode and the working-directory name to create.",
+    "Claim a matching planned row or append the next episode, setting it in-production. Returns the " +
+    "assigned season/episode plus the ABSOLUTE working-directory path on the pipeline host — pass that " +
+    "`workdir` (and `<workdir>/research.md`, `<workdir>/script.md`) straight to the other tools. The " +
+    "tools create the directory; do NOT try to mkdir it yourself (a remote orchestrator has no " +
+    "filesystem on this host).",
   parameters: Type.Object({
     album: Type.String(),
     artist: Type.String(),
@@ -98,9 +103,10 @@ export const catalogAssignTool = defineTool({
   }),
   execute: async (_id, params) => {
     const r = catalog.assign(params.album, params.artist, params.host, params.season);
+    const workdir = join(config.work.dir, r.dir);
     return result(
-      `${r.action}: S${String(r.season).padStart(2, "0")}E${String(r.episode).padStart(2, "0")} → ${r.dir}`,
-      r,
+      `${r.action}: S${String(r.season).padStart(2, "0")}E${String(r.episode).padStart(2, "0")} → ${workdir}`,
+      { ...r, workdir },
     );
   },
 });

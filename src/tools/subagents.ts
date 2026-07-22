@@ -10,7 +10,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { closeSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -51,6 +51,11 @@ export const researchAlbumTool = defineTool({
   }),
   execute: async (_id, p) => {
     const workdir = dirname(p.notesPath);
+
+    // Own the filesystem: create the working dir so the runner's log/sentinel/notes writes
+    // land (a remote orchestrator has no filesystem here and shouldn't mkdir). This is why
+    // notesPath must be the ABSOLUTE workdir path catalog_assign returns, not an invented one.
+    mkdirSync(workdir, { recursive: true });
 
     // Guard against a double-start: if a job is already running with a live pid,
     // return it rather than spawning a second Researcher over the same notes.
@@ -183,6 +188,7 @@ export const writeScriptTool = defineTool({
       referenceTracks: p.referenceTracks,
       research,
     });
+    mkdirSync(dirname(p.outPath), { recursive: true });
     writeFileSync(p.outPath, script, "utf-8");
     return toolResult(`script written to ${p.outPath} (${script.length} chars)`, { outPath: p.outPath });
   },

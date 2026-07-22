@@ -54,23 +54,27 @@ A trigger looks like: *"Making of \<album> by \<artist>, \<host> to host"* (host
 | # | Step | Tool | Gate? |
 |---|------|------|-------|
 | 0 | Preflight the album is producible | `preflight` | **HARD** — see below |
-| 1 | Reserve the season/episode + workdir name | `catalog_assign` | — |
-| 2 | Create the working directory | (write/bash) | — |
-| 3 | **Start** research into `research.md`, then poll until done | `research_album` → `wait_research` | see below |
-| 4 | Write the script from ONLY those notes | `write_script` | — |
-| 5 | Lint the format contract | `lint_script` | **HARD** — 0 errors |
-| 6 | Deterministic quality floor | `qa_script` | policy — see below |
-| 7 | Fact-check claims vs the notes | `factcheck_script` | policy — see below |
-| 8 | Estimate the credit cost | `budget_estimate` | cap — see below |
+| 1 | Reserve the episode → get the absolute `workdir` | `catalog_assign` | — |
+| 2 | **Start** research into `research.md`, then poll until done | `research_album` → `wait_research` | see below |
+| 3 | Write the script from ONLY those notes | `write_script` | — |
+| 4 | Lint the format contract | `lint_script` | **HARD** — 0 errors |
+| 5 | Deterministic quality floor | `qa_script` | policy — see below |
+| 6 | Fact-check claims vs the notes | `factcheck_script` | policy — see below |
+| 7 | Estimate the credit cost | `budget_estimate` | cap — see below |
 | — | **Phase 0 stops here → hand off to David** | | |
-| 9 | Credit hard-stop (fail-closed) | `credit_check` | **HARD** — Phase 1 |
-| 10 | Render to MP3 segments + cue sheet | `render_episode` | costs credits — Phase 1 |
-| 11 | Mark recorded | `catalog_set_status(…, "recorded")` | — |
-| 12 | Copy to NAS + trigger rescan, **wait** for it | `stage_audio(rescan, wait)` | — |
-| 13 | Resolve ids, create playlist in cue order | `navidrome_find_album` → `navidrome_album_songs` → `navidrome_create_playlist` | — |
-| 14 | Mark published with the date | `catalog_set_status(…, "published", <date>)` | — |
+| 8 | Credit hard-stop (fail-closed) | `credit_check` | **HARD** — Phase 1 |
+| 9 | Render to MP3 segments + cue sheet | `render_episode` | costs credits — Phase 1 |
+| 10 | Mark recorded | `catalog_set_status(…, "recorded")` | — |
+| 11 | Copy to NAS + trigger rescan, **wait** for it | `stage_audio(rescan, wait)` | — |
+| 12 | Resolve ids, create playlist in cue order | `navidrome_find_album` → `navidrome_album_songs` → `navidrome_create_playlist` | — |
+| 13 | Mark published with the date | `catalog_set_status(…, "published", <date>)` | — |
 
-Steps 9–14 are **Phase 1 only** — in Phase 0 they aren't in your toolset. Always `stage_audio` with
+**Paths are the pipeline's, not yours.** `catalog_assign` returns an absolute `workdir` on the
+pipeline host; pass it (and `<workdir>/research.md`, `<workdir>/script.md`) verbatim to every step.
+Do **not** create directories or invent paths — you have no filesystem on that host; the tools
+create what they write. (A path you make up resolves on the *wrong* machine and the tool ENOENTs.)
+
+Steps 8–13 are **Phase 1 only** — in Phase 0 they aren't in your toolset. Always `stage_audio` with
 `rescan: true, wait: true` before publishing, so you never create a playlist against a half-scanned
 library. Use `replace: true` when re-publishing an episode (mirrors the NAS dir, removing stale
 files from a previous render).

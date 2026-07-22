@@ -7,6 +7,7 @@
  *   pnpm cli catalog assign --album A --artist B --host Jools [--season N]
  *   pnpm cli preflight --album A --artist B [--lyrics-threshold 0.8]
  *   pnpm cli lint   path/to/script.md
+ *   pnpm cli qa     --script path/to/script.md --research path/to/research.md
  *   pnpm cli budget path/to/script.md [--cap 15000]
  *   pnpm cli navidrome ping | find-album --album A [--artist B] | album-songs --id ID | scan-status
  *
@@ -30,6 +31,7 @@ import * as navidrome from "./navidrome";
 import { loadDotenv, songsOfAlbum } from "./navidrome";
 import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "./preflight";
 import { publishEpisode } from "./publish";
+import * as qa from "./qa";
 import { renderEpisode } from "./render";
 import { stageAudio } from "./stage";
 import { gatherAlbumLyrics } from "./tools/lyrics";
@@ -303,6 +305,24 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  if (cmd === "qa") {
+    const a = [sub, ...rest].filter((x): x is string => !!x);
+    const scriptPath = flag(a, "script");
+    const researchPath = flag(a, "research");
+    if (!scriptPath || !researchPath) {
+      console.error("qa requires --script --research");
+      return 2;
+    }
+    const findings = qa.qaFiles(scriptPath, researchPath);
+    console.log(`qa ${scriptPath}`);
+    if (findings.length === 0) console.log("  OK — no issues");
+    for (const f of findings) console.log(`  [${f.level}] ${f.msg}`);
+    const errs = findings.filter((f) => f.level === "ERROR").length;
+    const warns = findings.length - errs;
+    console.log(`  → ${errs} error(s), ${warns} warning(s)`);
+    return errs > 0 ? 1 : 0;
+  }
+
   if (cmd === "write") {
     const a = [sub, ...rest].filter((x): x is string => !!x);
     const researchPath = flag(a, "research");
@@ -402,7 +422,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  console.error("usage: catalog | preflight | lint | budget | render | stage-audio | publish | navidrome | web-search | web-fetch (see header)");
+  console.error("usage: catalog | preflight | lint | qa | budget | render | stage-audio | publish | navidrome | web-search | web-fetch (see header)");
   return 2;
 }
 

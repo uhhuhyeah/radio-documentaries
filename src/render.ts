@@ -24,17 +24,50 @@ const TAG_ARTIST = "SUB/WAVE Documentaries";
 const pad2 = (n: number): string => String(n).padStart(2, "0");
 
 /**
- * Strip markdown that would be read aloud (LLMs emit *emphasis*, links, etc. even
- * when told not to). Belt to the writer-prompt's suspenders — the TTS gets clean text.
+ * Normalize a spoken segment before it goes to ElevenLabs.
+ *
+ * Two jobs. First: strip markdown that would be read aloud (LLMs emit *emphasis*,
+ * links, etc. even when told not to) — belt to the writer-prompt's suspenders.
+ *
+ * Second, and the reason the tail matters: ElevenLabs Flash v2.5 will sometimes
+ * hallucinate a short burst of foreign-language speech at the END of a segment
+ * when the text trails off on something non-terminal — a dangling em-dash, a
+ * markdown hard-break, a stray `---` slot separator, or just no closing
+ * punctuation. Observed twice in S01E01-punisher. So we scrub trailing markdown,
+ * collapse hard-break whitespace, and guarantee the segment ends on terminal
+ * punctuation, leaving the model nothing open-ended to "continue".
  */
 export function sanitizeForTts(text: string): string {
-  return text
+  let out = text
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) -> text
     .replace(/[*`]/g, "") // * ** ` emphasis/code
     .replace(/(^|[\s(])_([^_\n]+)_(?=[\s.,!?;:)]|$)/g, "$1$2") // _emphasis_ -> emphasis
-    .replace(/^\s{0,3}#{1,6}\s+/gm, "") // stray headings
+    .replace(/^\s{0,3}#{1,6}\s+/gm, ""); // stray headings
+
+  // Drop horizontal-rule / slot-separator lines (---, ***, ___) the writer left in.
+  out = out.replace(/^[ \t]*([-*_])\1{2,}[ \t]*$/gm, "");
+
+  // Em/en dashes read as a hanging pause (and a trailing one is a prime tail-
+  // hallucination trigger). The house style uses "..." for beats, not dashes,
+  // so any dash here is an anomaly — fold it into a comma so prosody survives.
+  out = out.replace(/\s*[—–]\s*/g, ", ");
+
+  // Collapse space/tab runs (this is also what markdown hard-breaks look like),
+  // then strip trailing whitespace per line and overall.
+  out = out
     .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+$/gm, "")
     .trim();
+
+  // Guarantee a terminal ending. If the last non-space char isn't sentence-final
+  // punctuation (allowing a closing quote/bracket), drop any dangling separator
+  // punctuation and add a period — no open-ended tail for the model to run past.
+  if (out && !/[.!?…]["'”’)\]]?$/.test(out)) {
+    out = out.replace(/[\s,;:.\-]+$/, "");
+    out += ".";
+  }
+
+  return out;
 }
 const asNum = (v: unknown, field: string): number => {
   if (typeof v !== "number") throw new ElevenLabsError(`front matter '${field}' must be a number`);

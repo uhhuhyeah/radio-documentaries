@@ -175,3 +175,18 @@ describe("reference-track spread", () => {
     expect(errors(qa.qaText(script(INTRO_OK), RESEARCH))).toEqual([]);
   });
 });
+
+describe("length floor grace", () => {
+  const wordsPart = (n: number): string => Array(n).fill("word").join(" ");
+
+  it("does not flag a ~19.7-min script (5% floor grace: 19+ clears)", () => {
+    // ~2955 spoken words / 150 wpm ≈ 19.7 min — just under the 20 floor, within grace.
+    const f = qa.qaText(script(INTRO_OK, wordsPart(2950)), RESEARCH);
+    expect(has(f, "WARN", "runtime")).toBe(false);
+  });
+
+  it("still flags a clearly-short ~16-min script", () => {
+    const f = qa.qaText(script(INTRO_OK, wordsPart(2400)), RESEARCH);
+    expect(has(f, "WARN", "runtime")).toBe(true);
+  });
+});

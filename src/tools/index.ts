@@ -16,6 +16,7 @@ import { factCheckFiles } from "../factcheck";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum } from "../navidrome";
 import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "../preflight";
+import * as qa from "../qa";
 import { renderEpisode } from "../render";
 import { stageAudio } from "../stage";
 import { researchAlbumTool, writeScriptTool } from "./subagents";
@@ -158,6 +159,27 @@ export const factCheckScriptTool = defineTool({
   },
 });
 
+export const qaScriptTool = defineTool({
+  name: "qa_script",
+  label: "QA script",
+  description:
+    "Deterministic quality gate for a script.md — complements lint. Checks lyric fidelity (any quoted, " +
+    "lyric-like span must appear verbatim in the research's Track Lyrics bank; a miss is a possible " +
+    "hallucinated lyric), estimated runtime vs target/house-range, the Subwave station ident in the " +
+    "intro, no voiced [source] tags, and reference-track count + spread. Errors block; warnings inform.",
+  parameters: Type.Object({ scriptPath: Type.String(), researchPath: Type.String() }),
+  execute: async (_id, params) => {
+    const findings = qa.qaFiles(params.scriptPath, params.researchPath);
+    const errors = findings.filter((f) => f.level === "ERROR").length;
+    const warnings = findings.length - errors;
+    const summary =
+      findings.length === 0
+        ? "qa: OK — no issues"
+        : `qa: ${errors} error(s), ${warnings} warning(s)\n` + findings.map((f) => `  [${f.level}] ${f.msg}`).join("\n");
+    return result(summary, { errors, warnings, findings });
+  },
+});
+
 export const budgetEstimateTool = defineTool({
   name: "budget_estimate",
   label: "Budget estimate",
@@ -272,6 +294,7 @@ export const documentaryTools = [
   writeScriptTool,
   lintScriptTool,
   factCheckScriptTool,
+  qaScriptTool,
   budgetEstimateTool,
   renderEpisodeTool,
   stageAudioTool,

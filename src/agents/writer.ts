@@ -53,6 +53,57 @@ function songsWithLyrics(research: string): string[] {
 }
 
 const SLOT_KIND = /^##\s+\[\d{2}\]\s+(SPOKEN|SONG)\s*·/;
+// Full slot heading with its parts: ## [NN] KIND · label
+const SLOT_HEADING_LINE = /^##\s+\[(\d{2})\]\s+(SPOKEN|SONG)\s*·\s*(.+?)\s*$/;
+const MAX_SONG_SLOTS = 5; // script-format.md: 3–5 reference tracks
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/**
+ * Which of `count` items to KEEP for an even spread down to `max` (identity when count ≤ max).
+ * Keeps the first and last and samples evenly between. Pure.
+ */
+export function keepIndices(count: number, max: number): number[] {
+  if (count <= max) return Array.from({ length: count }, (_, i) => i);
+  const keep = new Set<number>();
+  for (let j = 0; j < max; j++) keep.add(Math.round((j * (count - 1)) / (max - 1)));
+  return [...keep].sort((a, b) => a - b);
+}
+
+/**
+ * Cap SONG slots to `max`, keeping an even spread across the running order and renumbering every
+ * slot so indices stay contiguous (lint requires 1..N). The Writer's song count is erratic — the
+ * length-forcing prompt can over-produce (8 seen) — so enforce the 3–5 format rule deterministically
+ * here rather than nag the prompt. Front matter and each kept block are preserved verbatim except the
+ * [NN] index; dropped tracks are still discussed in the spoken beats, they just lose the full play.
+ * Pure.
+ */
+export function capSongSlots(script: string, max = MAX_SONG_SLOTS): string {
+  const lines = script.split("\n");
+  const headLines: number[] = [];
+  lines.forEach((l, i) => {
+    if (SLOT_HEADING_LINE.test(l)) headLines.push(i);
+  });
+  if (headLines.length === 0) return script;
+
+  const blocks = headLines.map((h, k) => {
+    const end = k + 1 < headLines.length ? headLines[k + 1]! : lines.length;
+    const m = lines[h]!.match(SLOT_HEADING_LINE)!;
+    return { kind: m[2]!, label: m[3]!, body: lines.slice(h + 1, end) };
+  });
+
+  const songPos = blocks.map((b, i) => (b.kind === "SONG" ? i : -1)).filter((i) => i >= 0);
+  if (songPos.length <= max) return script; // nothing to trim
+
+  const keep = new Set(keepIndices(songPos.length, max).map((j) => songPos[j]!));
+  const kept = blocks.filter((b, i) => b.kind !== "SONG" || keep.has(i));
+
+  const out = lines.slice(0, headLines[0]!); // front matter + any preamble
+  kept.forEach((b, i) => {
+    out.push(`## [${pad2(i + 1)}] ${b.kind} · ${b.label}`);
+    out.push(...b.body);
+  });
+  return out.join("\n");
+}
 
 /**
  * Strip markdown from SPOKEN bodies only — deterministically, so the writer's stray emphasis
@@ -154,9 +205,10 @@ export function buildWriterMessage(input: WriterInput): string {
 
 export async function writeScript(input: WriterInput): Promise<string> {
   const raw = await complete(WRITER_SYSTEM, buildWriterMessage(input));
-  const script = stripSpokenMarkdown(raw); // deterministically clean spoken bodies (no lint noise)
+  const cleaned = stripSpokenMarkdown(raw); // deterministically clean spoken bodies (no lint noise)
+  const script = capSongSlots(cleaned); // enforce the 3–5 song cap (the length prompt over-produces)
   // Make the declared reference_tracks match the SONG slots actually written
-  // (the writer may use fewer than requested; the front matter should describe reality).
+  // (after the cap; the front matter should describe reality).
   const nSongs = sm.songSlots(sm.parse(script)).length;
   return script.replace(/^reference_tracks:.*$/m, `reference_tracks: ${nSongs}`);
 }

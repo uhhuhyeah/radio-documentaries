@@ -52,6 +52,33 @@ function songsWithLyrics(research: string): string[] {
   return [...research.slice(idx).matchAll(/^### (.+)$/gm)].map((m) => m[1]!.trim());
 }
 
+const SLOT_KIND = /^##\s+\[\d{2}\]\s+(SPOKEN|SONG)\s*·/;
+
+/**
+ * Strip markdown from SPOKEN bodies only — deterministically, so the writer's stray emphasis
+ * doesn't leave lint warnings (the render sanitizer already strips it from the audio; this keeps
+ * the SCRIPT clean too). Removes exactly what lint flags — `*`, backtick, and `[text](url)` links —
+ * and nothing else: front matter, slot headings, and SONG metadata lines are left untouched. Pure.
+ */
+export function stripSpokenMarkdown(script: string): string {
+  let inSpoken = false;
+  return script
+    .split("\n")
+    .map((line) => {
+      const m = line.match(SLOT_KIND);
+      if (m) {
+        inSpoken = m[1] === "SPOKEN";
+        return line; // never touch the heading itself
+      }
+      if (!inSpoken) return line; // front matter + SONG bodies stay verbatim
+      return line
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) -> text
+        .replace(/\]\([^)]*\)/g, "") // any residual link tail
+        .replace(/[*`]/g, ""); // * ** ` emphasis/code — the rest of what lint flags
+    })
+    .join("\n");
+}
+
 /**
  * Build the Writer's user message. Pure (no LLM/IO) so both modes are unit-testable.
  * Fresh mode: generate the full script from the notes. Revise mode (revisionNotes + previousDraft
@@ -118,7 +145,8 @@ export function buildWriterMessage(input: WriterInput): string {
 }
 
 export async function writeScript(input: WriterInput): Promise<string> {
-  const script = await complete(WRITER_SYSTEM, buildWriterMessage(input));
+  const raw = await complete(WRITER_SYSTEM, buildWriterMessage(input));
+  const script = stripSpokenMarkdown(raw); // deterministically clean spoken bodies (no lint noise)
   // Make the declared reference_tracks match the SONG slots actually written
   // (the writer may use fewer than requested; the front matter should describe reality).
   const nSongs = sm.songSlots(sm.parse(script)).length;

@@ -36,6 +36,13 @@ export interface WriterInput {
   targetMinutes?: number;
   referenceTracks?: number;
   research: string; // the Researcher's notes (the only source of facts)
+  /**
+   * Producer's targeted fixes from a review pass (lint/QA/factcheck findings). When set together
+   * with `previousDraft`, the Writer REVISES that draft to address these notes rather than
+   * regenerating from scratch — so the bounded rewrite loop converges instead of rolling the dice.
+   */
+  revisionNotes?: string;
+  previousDraft?: string; // the prior script.md to revise; required for revise mode
 }
 
 /** Songs that have verbatim lyrics in the research's "Track Lyrics" section. */
@@ -45,14 +52,20 @@ function songsWithLyrics(research: string): string[] {
   return [...research.slice(idx).matchAll(/^### (.+)$/gm)].map((m) => m[1]!.trim());
 }
 
-export async function writeScript(input: WriterInput): Promise<string> {
+/**
+ * Build the Writer's user message. Pure (no LLM/IO) so both modes are unit-testable.
+ * Fresh mode: generate the full script from the notes. Revise mode (revisionNotes + previousDraft
+ * both present): fix exactly the producer's notes in the prior draft, keeping what already works.
+ */
+export function buildWriterMessage(input: WriterInput): string {
   const withLyrics = songsWithLyrics(input.research);
   const lyricsGuide = withLyrics.length
     ? `You have VERBATIM lyrics for these tracks: ${withLyrics.join(", ")}. Choose your SONG slots ` +
       `from these so you can quote accurately, and quote each song ONLY its own lyrics (never ` +
       `attribute one song's words to another). For any other song, describe it — do NOT quote lyrics.`
     : `No track lyrics are in the research — do NOT quote any song lyrics; describe the songs instead.`;
-  const user = [
+  const targetMinutes = input.targetMinutes ?? 25;
+  const head = [
     `Episode metadata (use these exact values in the front matter):`,
     `  season: ${input.season}`,
     `  episode: ${input.episode}`,
@@ -61,7 +74,7 @@ export async function writeScript(input: WriterInput): Promise<string> {
     `  host: ${input.host}`,
     `  host_name: ${JSON.stringify(input.hostName)}`,
     `  model: ${input.model ?? config.elevenlabs.model}`,
-    `  target_minutes: ${input.targetMinutes ?? 25}`,
+    `  target_minutes: ${targetMinutes}`,
     `  reference_tracks: ${input.referenceTracks ?? 4}`,
     ``,
     personaBlock(input.host, input.hostName),
@@ -71,15 +84,41 @@ export async function writeScript(input: WriterInput): Promise<string> {
     lyricsGuide,
     `Emit BARE --- front matter (never a \`\`\`yaml fence),`,
     `KEBAB-CASE slot labels, and NO markdown in spoken bodies.`,
-    `Write the FULL ${input.targetMinutes ?? 25}-minute script now: aim for ~4,000 spoken words total across`,
-    `about 12–16 SPOKEN parts of ~250–350 words each (plus the reference songs). Be thorough and`,
-    `expansive; do not stop short.`,
-    ``,
-    `--- RESEARCH NOTES (your only source of facts) ---`,
-    input.research,
-  ].join("\n");
+  ];
 
-  const script = await complete(WRITER_SYSTEM, user);
+  const revising = !!(input.revisionNotes && input.previousDraft);
+  const tail = revising
+    ? [
+        `REVISION PASS — you already wrote the draft below and the producer reviewed it. Produce a`,
+        `REVISED, COMPLETE script that fixes EXACTLY the notes and otherwise keeps what already works`,
+        `(the structure, slot order, voice, and every part the notes don't mention). Do NOT regenerate`,
+        `from scratch, and do NOT introduce any new claim that isn't in the research. Re-check every`,
+        `quoted lyric against the Track Lyrics section — quotes must be word-for-word. Keep the script`,
+        `within the ${targetMinutes}-minute house range unless a note says otherwise.`,
+        ``,
+        `PRODUCER'S REVISION NOTES — address each one:`,
+        input.revisionNotes!.trim(),
+        ``,
+        `--- YOUR PREVIOUS DRAFT (revise THIS; output the full revised script) ---`,
+        input.previousDraft!.trim(),
+        ``,
+        `--- RESEARCH NOTES (your only source of facts; re-verify quotes and claims against this) ---`,
+        input.research,
+      ]
+    : [
+        `Write the FULL ${targetMinutes}-minute script now: aim for ~4,000 spoken words total across`,
+        `about 12–16 SPOKEN parts of ~250–350 words each (plus the reference songs). Be thorough and`,
+        `expansive; do not stop short.`,
+        ``,
+        `--- RESEARCH NOTES (your only source of facts) ---`,
+        input.research,
+      ];
+
+  return [...head, ``, ...tail].join("\n");
+}
+
+export async function writeScript(input: WriterInput): Promise<string> {
+  const script = await complete(WRITER_SYSTEM, buildWriterMessage(input));
   // Make the declared reference_tracks match the SONG slots actually written
   // (the writer may use fewer than requested; the front matter should describe reality).
   const nSongs = sm.songSlots(sm.parse(script)).length;

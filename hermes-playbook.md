@@ -114,18 +114,20 @@ start-then-poll shape as `stage_audio(wait)`'s rescan wait, but split across two
   summary.)
 
 ### `lint_script` — the format contract (HARD)
-- `errors > 0` **blocks rendering.** Re-run `write_script` (the Writer sees the same notes) and lint
-  again. If it still fails after **2** rewrites, stop and report the blockers — don't loop.
+- `errors > 0` **blocks rendering.** Re-run `write_script` with `revisionNotes` listing the lint
+  errors, and lint again. If it still fails after **2** rewrites, stop and report the blockers — don't loop.
 - Warnings inform; they don't block.
 
 ### `qa_script` — the deterministic quality floor
 Checks lyric fidelity, runtime vs the house range, the **Subwave** station ident in the intro, no
 voiced `[source]` tags, and reference-track count + spread. Policy:
 - **A lyric-fidelity finding is a HOLD** ("possible fabricated lyric — not verbatim in the Track
-  Lyrics bank"). This is the #1 hallucination guard. Treat it as blocking: re-run `write_script`
-  once; if it persists, hold for David — do not render a script with an unverified quoted lyric.
-- A **missing station ident** or a **voiced `[source]` tag**: re-run `write_script` (cheap, clearly
-  wrong). 
+  Lyrics bank"). This is the #1 hallucination guard. Treat it as blocking: re-run `write_script` with
+  `revisionNotes` quoting the correct verbatim lyric; if it persists, hold for David — do not render a
+  script with an unverified quoted lyric. (Often the lyric is real but off by a word — name the exact
+  fix in the notes.)
+- A **missing station ident** or a **voiced `[source]` tag**: re-run `write_script` with
+  `revisionNotes` (cheap, clearly wrong).
 - Runtime / reference-spread warnings: advisory. Note them in the handoff; don't loop on them.
 
 ### `factcheck_script` — the triage policy
@@ -134,8 +136,9 @@ The checker is **advisory and non-deterministic** — re-running surfaces a *dif
 Read the findings once and triage by `severity`:
 
 - **`CONTRADICTION`** (the script states something the notes contradict — e.g. wrong album swapped
-  in, "the studio closed" when it didn't): **block.** Re-run `write_script` (bounded: **≤2**
-  rewrites total across QA+factcheck). If a contradiction survives, **hold for David** — never
+  in, "the studio closed" when it didn't): **block.** Re-run `write_script` with `revisionNotes`
+  naming the exact claim to fix or cut (bounded: **≤2** rewrites total across QA+factcheck). If a
+  contradiction survives, **hold for David** — never
   render a script that contradicts the research.
 - **`UNSUPPORTED`** (a stated-as-fact claim that isn't in the notes): **judge it**, using
   `category` and `confidence`:
@@ -170,8 +173,10 @@ do not set that flag to force a render past an unknown balance.
 
 ## Retry / proceed / hold — the whole rule in one place
 
-- **Rewrites are bounded: 2 total** across lint + QA + fact-check for one episode. Each rewrite is a
-  fresh `write_script` against the same notes — never a hand-edit.
+- **Rewrites are bounded: 2 total** across lint + QA + fact-check for one episode. A rewrite is
+  `write_script` with **`revisionNotes`** — the specific findings to fix — so the Writer *revises* the
+  existing draft to your notes and the loop converges (never a hand-edit, never a note-free
+  regenerate, which just rolls the dice on new inventions).
 - **Never re-run `factcheck_script` for a cleaner result** — it's non-deterministic. Read once, act.
 - **Stop-and-report beats guess.** A tool error, an ambiguous trigger, an unknown host, a persistent
   contradiction, an over-cap estimate: hold and escalate. You are not penalised for asking.

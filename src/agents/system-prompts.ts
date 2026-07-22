@@ -26,12 +26,14 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
    "running" that is NOT an error — just call wait_research again. On "error", stop and report.
 3. write_script(researchPath, outPath=<workdir>/script.md, + the episode metadata) — only AFTER
    wait_research is "done"; runs the Writer against ONLY those notes.
-4. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. If it fails,
-   call write_script again (the Writer sees the same notes) or report the blockers.
+4. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. To fix findings,
+   call write_script again with revisionNotes describing the fixes (it REVISES the existing draft to
+   your notes rather than regenerating). Bounded: after ~2 revisions, report the blockers.
 5. factcheck_script(scriptPath, researchPath) — check the script's album-facts against the notes.
    Advisory, not a hard gate: report any CONTRADICTION/UNSUPPORTED findings. If a CONTRADICTION or a
-   clearly-wrong invented fact turns up, re-run write_script or fix it before rendering; ignore
-   findings that are really the host's persona colour or opinion.
+   clearly-wrong invented fact turns up, re-run write_script with revisionNotes naming the exact
+   claim to fix or cut before rendering; ignore findings that are really the host's persona colour or
+   opinion. (QA lyric-fidelity misses go the same way — revisionNotes to quote the lyric verbatim.)
 6. budget_estimate(scriptPath, cap) — surface the credit cost; do not exceed the cap without
    explicit approval.
 7. When rendering is approved, render_episode(scriptPath) produces the ID3-tagged MP3 segments

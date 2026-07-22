@@ -10,7 +10,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -160,7 +160,9 @@ export const writeScriptTool = defineTool({
   label: "Write script",
   description:
     "Run the Writer sub-agent to turn research notes into a format-compliant script.md. " +
-    "Uses ONLY the notes (no web). Lint the result afterwards.",
+    "Uses ONLY the notes (no web). Lint the result afterwards. To REVISE after a review, pass " +
+    "revisionNotes (the lint/QA/factcheck fixes to make): the Writer then revises the existing " +
+    "script.md at outPath to address them instead of regenerating — so the rewrite loop converges.",
   parameters: Type.Object({
     researchPath: Type.String(),
     outPath: Type.String({ description: "Where to write script.md" }),
@@ -173,9 +175,20 @@ export const writeScriptTool = defineTool({
     model: Type.Optional(Type.String()),
     targetMinutes: Type.Optional(Type.Integer()),
     referenceTracks: Type.Optional(Type.Integer()),
+    revisionNotes: Type.Optional(
+      Type.String({
+        description:
+          "Targeted fixes from a review pass (e.g. 'quote lyric X verbatim; cut the invented Y claim; " +
+          "deepen to ~25 min'). Revises the existing script.md at outPath instead of regenerating.",
+      }),
+    ),
   }),
   execute: async (_id, p) => {
     const research = readFileSync(p.researchPath, "utf-8");
+    // Revise mode: notes + an existing draft at outPath. If notes are given but no draft exists,
+    // fall through to a fresh write (nothing to revise).
+    const previousDraft =
+      p.revisionNotes && existsSync(p.outPath) ? readFileSync(p.outPath, "utf-8") : undefined;
     const script = await writeScript({
       album: p.album,
       artist: p.artist,
@@ -187,9 +200,15 @@ export const writeScriptTool = defineTool({
       targetMinutes: p.targetMinutes,
       referenceTracks: p.referenceTracks,
       research,
+      revisionNotes: p.revisionNotes,
+      previousDraft,
     });
     mkdirSync(dirname(p.outPath), { recursive: true });
     writeFileSync(p.outPath, script, "utf-8");
-    return toolResult(`script written to ${p.outPath} (${script.length} chars)`, { outPath: p.outPath });
+    const mode = previousDraft ? "revised" : "wrote";
+    return toolResult(`${mode} script → ${p.outPath} (${script.length} chars)`, {
+      outPath: p.outPath,
+      revised: !!previousDraft,
+    });
   },
 });

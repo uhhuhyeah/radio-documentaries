@@ -60,8 +60,11 @@ export const preflightTool = defineTool({
 
 export const catalogNextTool = defineTool({
   name: "catalog_next",
-  label: "Catalog: next episode",
-  description: "Return the next episode number for a season (defaults to the active season).",
+  label: "Catalog: next append number",
+  description:
+    "The next episode NUMBER to APPEND a brand-new, unplanned episode to a season (max existing + 1). " +
+    "This is NOT what to produce next — for a planned queue use catalog_next_planned. You rarely need " +
+    "this: catalog_assign computes the append number itself when no planned row matches.",
   parameters: Type.Object({
     season: Type.Optional(Type.Integer({ description: "Season number; omit for the active season." })),
   }),
@@ -69,14 +72,38 @@ export const catalogNextTool = defineTool({
     const text = catalog.read();
     const season = params.season ?? catalog.activeSeason(text);
     const next = catalog.nextEpisode(text, season);
-    return result(`Season ${season}: next episode is ${next}.`, { season, next });
+    return result(`Season ${season}: next APPEND number is ${next} (not necessarily what to produce next).`, {
+      season,
+      next,
+    });
+  },
+});
+
+export const catalogNextPlannedTool = defineTool({
+  name: "catalog_next_planned",
+  label: "Catalog: next planned episode",
+  description:
+    "The next episode to PRODUCE: the first row still marked `planned` in the season (queue order). " +
+    "This is the answer to \"what's next?\". Returns null when nothing is planned. Feed its album/artist/" +
+    "host to catalog_assign to claim it.",
+  parameters: Type.Object({
+    season: Type.Optional(Type.Integer({ description: "Season number; omit for the active season." })),
+  }),
+  execute: async (_id, params) => {
+    const text = catalog.read();
+    const season = params.season ?? catalog.activeSeason(text);
+    const row = catalog.nextPlanned(text, season);
+    const summary = row
+      ? `Season ${season}: next planned is E${String(row.ep).padStart(2, "0")} — ${row.album} by ${row.artist} (host ${row.host}).`
+      : `Season ${season}: nothing planned.`;
+    return result(summary, { season, row });
   },
 });
 
 export const catalogListTool = defineTool({
   name: "catalog_list",
   label: "Catalog: list",
-  description: "List the episodes recorded for a season.",
+  description: "List all episode rows for a season with their status (planned | in-production | recorded | published).",
   parameters: Type.Object({ season: Type.Optional(Type.Integer()) }),
   execute: async (_id, params) => {
     const text = catalog.read();
@@ -349,6 +376,7 @@ export const stageAudioTool = defineTool({
 /** All tools the Producer agent may call. */
 export const documentaryTools = [
   preflightTool,
+  catalogNextPlannedTool,
   catalogNextTool,
   catalogListTool,
   catalogAssignTool,

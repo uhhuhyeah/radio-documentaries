@@ -10,7 +10,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,7 +73,20 @@ export const researchAlbumTool = defineTool({
       detached: true,
       stdio: ["ignore", log, log],
     });
+    // A failed spawn (ENOENT/EAGAIN) emits 'error' asynchronously; an unhandled
+    // 'error' event would throw and crash the long-lived MCP server. Catch it and
+    // record a terminal error sentinel so wait_research reports it instead.
+    child.on("error", (err) => {
+      writeStatus(p.notesPath, {
+        state: "error",
+        pid: child.pid ?? -1,
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        error: `failed to spawn research runner: ${err.message}`,
+      });
+    });
     child.unref();
+    closeSync(log); // the child dup'd its own fd; don't leak the parent's copy per call.
 
     // Write the sentinel in the PARENT before returning so an immediate
     // wait_research never races a missing file (the runner re-asserts it too).

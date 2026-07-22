@@ -12,6 +12,9 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 
 import * as budget from "../budget";
 import * as catalog from "../catalog";
+import { config } from "../config";
+import { checkCredit } from "../credit";
+import { apiKeyFromEnv } from "../elevenlabs";
 import { factCheckFiles } from "../factcheck";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum, waitForScan } from "../navidrome";
@@ -199,6 +202,35 @@ export const budgetEstimateTool = defineTool({
   },
 });
 
+// --- credit hard-stop (network; the render gate) -----------------------------
+
+export const creditCheckTool = defineTool({
+  name: "credit_check",
+  label: "Credit hard-stop check",
+  description:
+    "Credit gate to run BEFORE render_episode. Estimates the episode's credit need, queries the " +
+    "ElevenLabs key's live balance, and checks both the balance (can the render finish?) and the " +
+    "per-episode cap. Returns ok=false with a reason if the render must be refused — do NOT render on " +
+    "a fail. Fail-closed: a failed balance query aborts unless allowUnknownBalance is set.",
+  parameters: Type.Object({
+    scriptPath: Type.String(),
+    model: Type.Optional(Type.String({ description: "TTS model id; omit to use the script's front-matter model." })),
+    cap: Type.Optional(Type.Integer({ description: "Per-episode credit cap; omit for the configured default." })),
+    allowUnknownBalance: Type.Optional(
+      Type.Boolean({ description: "Proceed on a failed balance query (cap-only). Default false (fail-closed)." }),
+    ),
+  }),
+  execute: async (_id, params) => {
+    const e = budget.estimateFile(params.scriptPath);
+    const modelId = params.model ?? e.chosenModel ?? config.elevenlabs.model;
+    const cap = params.cap ?? config.budget.perEpisodeCap;
+    const check = await checkCredit(params.scriptPath, modelId, apiKeyFromEnv(), cap, {
+      allowUnknownBalance: params.allowUnknownBalance,
+    });
+    return result(`credit-check (${modelId}): ${check.ok ? "OK" : "ABORT"} — ${check.reason}`, check);
+  },
+});
+
 // --- render (network; needs the ElevenLabs key) ------------------------------
 
 export const renderEpisodeTool = defineTool({
@@ -321,6 +353,7 @@ export const documentaryTools = [
   factCheckScriptTool,
   qaScriptTool,
   budgetEstimateTool,
+  creditCheckTool,
   renderEpisodeTool,
   stageAudioTool,
   navidromeFindAlbumTool,

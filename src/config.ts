@@ -21,6 +21,8 @@ export interface Config {
   models: { research: string; write: string; producer: string; verify: string; timeoutMs: number };
   elevenlabs: { model: string };
   voices: Record<string, VoiceConfig>;
+  /** Spend limits for the credit hard-stop (src/credit.ts). */
+  budget: { perEpisodeCap: number };
   /** How rendered audio is copied onto the NAS Music share (Navidrome's own mount is read-only). */
   nas: { sshHost: string; musicDir: string };
 }
@@ -38,6 +40,10 @@ const DEFAULTS: Config = {
     p_cara: { voiceId: "ZF6FPAbjXT4488VcRRnw", speed: 1.1 },
     p_jools: { voiceId: "1BUhH8aaMvGMUdGAmWVM", speed: 1.0 },
   },
+  // Per-episode credit ceiling for the render hard-stop. ~9k credits/episode observed;
+  // 15000 leaves headroom without allowing a runaway. Live-balance check guards the key
+  // quota; no monthly ceiling (1 episode/month — a monthly ledger is a separate package).
+  budget: { perEpisodeCap: 15000 },
   // The PVE host has the NAS Music share mounted read-write; Navidrome's LXC mount is read-only.
   nas: { sshHost: "root@100.110.0.9", musicDir: "/mnt/nas/music/subwave-documentaries" },
 };
@@ -47,6 +53,7 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
   const raw: any = existsSync(path) ? parseToml(readFileSync(path, "utf-8")) : {};
   const m = raw.models ?? {};
   const el = raw.elevenlabs ?? {};
+  const bg = raw.budget ?? {};
 
   const voices: Record<string, VoiceConfig> = {};
   for (const [id, v] of Object.entries<any>(raw.voices ?? {})) {
@@ -63,6 +70,9 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
     },
     elevenlabs: { model: el.model ?? DEFAULTS.elevenlabs.model },
     voices: Object.keys(voices).length ? voices : DEFAULTS.voices,
+    budget: {
+      perEpisodeCap: Number(process.env.DOCS_PER_EPISODE_CAP ?? bg.per_episode_cap ?? DEFAULTS.budget.perEpisodeCap),
+    },
     nas: {
       sshHost: process.env.DOCS_NAS_SSH_HOST ?? raw.nas?.ssh_host ?? DEFAULTS.nas.sshHost,
       musicDir: process.env.DOCS_NAS_MUSIC_DIR ?? raw.nas?.music_dir ?? DEFAULTS.nas.musicDir,

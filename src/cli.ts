@@ -9,6 +9,7 @@
  *   pnpm cli lint   path/to/script.md
  *   pnpm cli qa     --script path/to/script.md --research path/to/research.md
  *   pnpm cli budget path/to/script.md [--cap 15000]
+ *   pnpm cli credit-check --script path/to/script.md [--model M] [--cap N] [--allow-unknown-balance]
  *   pnpm cli navidrome ping | find-album --album A [--artist B] | album-songs --id ID | scan-status
  *   pnpm cli wait-scan [--timeout Ns] [--interval Ns]   # block until a rescan settles, then publish
  *
@@ -25,6 +26,8 @@ import { writeScript } from "./agents/writer";
 import * as budget from "./budget";
 import { config } from "./config";
 import * as catalog from "./catalog";
+import { checkCredit } from "./credit";
+import { apiKeyFromEnv } from "./elevenlabs";
 import { factCheckFiles } from "./factcheck";
 import * as lint from "./lint";
 import { complete } from "./llm";
@@ -152,6 +155,36 @@ async function main(): Promise<number> {
       }
     }
     return 0;
+  }
+
+  if (cmd === "credit-check") {
+    const a = [sub, ...rest].filter((x): x is string => !!x);
+    const scriptPath = flag(a, "script");
+    if (!scriptPath) {
+      console.error("credit-check requires --script path [--model M] [--cap N] [--allow-unknown-balance]");
+      return 2;
+    }
+    const e = budget.estimateFile(scriptPath);
+    const modelId = flag(a, "model") ?? e.chosenModel ?? config.elevenlabs.model;
+    const capArg = flag(a, "cap");
+    const cap = capArg !== undefined ? parseInt(capArg, 10) : config.budget.perEpisodeCap;
+    let apiKey: string;
+    try {
+      apiKey = apiKeyFromEnv();
+    } catch (err) {
+      console.error(String(err instanceof Error ? err.message : err));
+      return 1;
+    }
+    const check = await checkCredit(scriptPath, modelId, apiKey, cap, {
+      allowUnknownBalance: a.includes("--allow-unknown-balance"),
+    });
+    console.log(`credit-check ${scriptPath}`);
+    console.log(`  model:      ${modelId}`);
+    console.log(`  estimated:  ${check.estimatedCredits !== undefined ? Math.round(check.estimatedCredits).toLocaleString() : "?"} credits`);
+    console.log(`  remaining:  ${check.remaining !== undefined ? Math.round(check.remaining).toLocaleString() : "?"} credits (key balance)`);
+    console.log(`  cap:        ${cap.toLocaleString()} credits`);
+    console.log(`  → ${check.ok ? "OK — safe to render" : "ABORT"}: ${check.reason}`);
+    return check.ok ? 0 : 1;
   }
 
   if (cmd === "navidrome") {
@@ -365,12 +398,16 @@ async function main(): Promise<number> {
     const maxArg = flag([...rest], "max-spoken");
     try {
       const skipArg = flag([...rest], "skip-spoken");
+      const capArg = flag([...rest], "cap");
       const r = await renderEpisode(sub, {
         maxSpoken: maxArg ? parseInt(maxArg, 10) : undefined,
         skipSpoken: skipArg ? parseInt(skipArg, 10) : undefined,
         model: flag([...rest], "model"),
         onlyLabel: flag([...rest], "only"),
         audioDir: flag([...rest], "audio-dir"),
+        skipCreditGuard: rest.includes("--skip-credit-guard"),
+        perEpisodeCap: capArg ? parseInt(capArg, 10) : undefined,
+        allowUnknownBalance: rest.includes("--allow-unknown-balance"),
       });
       console.log(`rendered ${r.rendered} segment(s) → ${r.audioDir}\ncue → ${r.cuePath}`);
       if (r.removed.length) console.log(`removed ${r.removed.length} orphan(s): ${r.removed.join(", ")}`);
@@ -449,7 +486,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  console.error("usage: catalog | preflight | lint | qa | budget | render | stage-audio | wait-scan | publish | navidrome | web-search | web-fetch (see header)");
+  console.error("usage: catalog | preflight | lint | qa | budget | credit-check | render | stage-audio | wait-scan | publish | navidrome | web-search | web-fetch (see header)");
   return 2;
 }
 

@@ -14,9 +14,12 @@ working directory. Use your tools deliberately and confirm each step succeeded b
 Flow for a trigger like "Making of <album> by <artist>, <host> to host":
 1. catalog_assign(album, artist, host[, season]) → get the season/episode + working-dir name.
 2. Create the working directory (write/bash) named exactly as returned.
-3. research_album(album, artist, notesPath=<workdir>/research.md) — runs the Researcher.
-4. write_script(researchPath, outPath=<workdir>/script.md, + the episode metadata) — runs the
-   Writer against ONLY those notes.
+3. research_album(album, artist, notesPath=<workdir>/research.md) — STARTS the Researcher in the
+   background and returns immediately (research takes ~10 min). Then poll
+   wait_research(notesPath) until it reports state "done" before moving on: while it returns
+   "running" that is NOT an error — just call wait_research again. On "error", stop and report.
+4. write_script(researchPath, outPath=<workdir>/script.md, + the episode metadata) — only AFTER
+   wait_research is "done"; runs the Writer against ONLY those notes.
 5. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. If it fails,
    call write_script again (the Writer sees the same notes) or report the blockers.
 6. factcheck_script(scriptPath, researchPath) — check the script's album-facts against the notes.

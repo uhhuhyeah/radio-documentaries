@@ -22,7 +22,7 @@ import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "../preflight";
 import * as qa from "../qa";
 import { renderEpisode } from "../render";
 import { stageAudio } from "../stage";
-import { researchAlbumTool, writeScriptTool } from "./subagents";
+import { researchAlbumTool, researchStatusTool, waitResearchTool, writeScriptTool } from "./subagents";
 import { toolResult as result } from "./util";
 
 // --- preflight (network; the make-ability gate) ------------------------------
@@ -348,6 +348,8 @@ export const documentaryTools = [
   catalogAssignTool,
   catalogSetStatusTool,
   researchAlbumTool,
+  waitResearchTool,
+  researchStatusTool,
   writeScriptTool,
   lintScriptTool,
   factCheckScriptTool,

@@ -56,7 +56,7 @@ A trigger looks like: *"Making of \<album> by \<artist>, \<host> to host"* (host
 | 0 | Preflight the album is producible | `preflight` | **HARD** — see below |
 | 1 | Reserve the season/episode + workdir name | `catalog_assign` | — |
 | 2 | Create the working directory | (write/bash) | — |
-| 3 | Research the album into `research.md` | `research_album` | — |
+| 3 | **Start** research into `research.md`, then poll until done | `research_album` → `wait_research` | see below |
 | 4 | Write the script from ONLY those notes | `write_script` | — |
 | 5 | Lint the format contract | `lint_script` | **HARD** — 0 errors |
 | 6 | Deterministic quality floor | `qa_script` | policy — see below |
@@ -85,6 +85,23 @@ files from a previous render).
 - **SOFT (proceed, but note it):** lyric resolution below the threshold (≈0.8 of tracks). A
   lyric-heavy album with poor lyric coverage tends to produce a thin script — proceed, but flag it in
   your handoff so David knows the research went in light.
+
+### `research_album` + `wait_research` — the async research handshake
+Research runs ~10 min — longer than the MCP request timeout — so it is **asynchronous**, the same
+start-then-poll shape as `stage_audio(wait)`'s rescan wait, but split across two tools:
+- `research_album` **starts** a detached background job and returns immediately with `state: "started"`
+  (or `state: "running"` if one was already going — a re-call is a safe no-op). It does **not** write
+  the notes before returning; that's the job's work.
+- Then poll `wait_research(notesPath)`. It blocks for a bounded window (~240s) and returns one of:
+  - **`done`** — notes are ready; proceed to `write_script`.
+  - **`running`** — the bounded timeout was hit and the job is **still going**. This is **NOT an
+    error** (unlike `wait_scan`, which throws on timeout): just **re-invoke `wait_research`**.
+  - **`error`** — the research failed, or its process died without finishing. **Halt and escalate**
+    with the returned `message`; do not proceed to `write_script`.
+- **Cap total waiting at ~25 min** of polling (roughly six `running` re-invocations). If it still
+  hasn't reached `done` by then, stop and escalate it as a stuck job rather than polling forever.
+  (`research_status(notesPath)` is an instant, non-blocking read of the same state for your handoff
+  summary.)
 
 ### `lint_script` — the format contract (HARD)
 - `errors > 0` **blocks rendering.** Re-run `write_script` (the Writer sees the same notes) and lint

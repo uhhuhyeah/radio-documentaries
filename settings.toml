@@ -33,6 +33,14 @@ per_episode_cap = 15000
 ssh_host = "root@100.110.0.9"
 music_dir = "/mnt/nas/music/subwave-documentaries"
 
+# MCP HTTP server (`pnpm mcp`, src/mcp.ts). Exposes documentaryTools over Streamable HTTP so
+# Hermes (CTID 105) can register it as a remote toolset:
+#   hermes mcp add subwave --url http://<pipeline-lxc>:8848/mcp --auth header
+# Binds 0.0.0.0 (Hermes connects cross-LXC over the LAN). Env: DOCS_MCP_PORT overrides the port.
+# The bearer token is a SECRET and stays env-only (DOCS_MCP_TOKEN in .env) — never in this file.
+[mcp]
+port = 8848
+
 # Per-persona ElevenLabs voice (from subwave-config). Keys are persona ids.
 [voices.p_cara]
 voice_id = "ZF6FPAbjXT4488VcRRnw"  # "Amelia"

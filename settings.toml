@@ -4,11 +4,15 @@
 
 [models]
 # OpenRouter model ids (https://openrouter.ai/models). qwen3-30b is fast + clean for
-# bulk synthesis/writing; qwen3-235b is richer but slow (used by the orchestrating Producer).
-research = "qwen/qwen3-30b-a3b-instruct-2507"
-write    = "qwen/qwen3-30b-a3b-instruct-2507"
+# bulk synthesis/writing; qwen3-235b is richer but slow. Running everything on 235b while
+# iterating on output quality — drop research/write back to 30b for cheaper/faster batches.
+research = "qwen/qwen3-235b-a22b-2507"
+write    = "qwen/qwen3-235b-a22b-2507"
 producer = "qwen/qwen3-235b-a22b-2507"
-timeout_ms = 300000
+# Fact-checks the research draft against the fetched sources (quarantines inferred/weak-source
+# claims). The 235b does sharper checking (catches mis-credits, doesn't garble names) at more cost.
+verify   = "qwen/qwen3-235b-a22b-2507"
+timeout_ms = 560000
 
 [elevenlabs]
 # Default TTS model stamped into new scripts' front matter (per-episode front matter wins;

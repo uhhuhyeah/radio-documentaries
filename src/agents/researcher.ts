@@ -15,16 +15,44 @@ import { writeFileSync } from "node:fs";
 import { config } from "../config";
 import { complete } from "../llm";
 import { gatherAlbumLyrics } from "../tools/lyrics";
-import { type SearchResult, webFetchText, webSearch } from "../tools/web";
-import { RESEARCHER_SYSTEM } from "./system-prompts";
+import { type SearchResult, sourceReliability, webFetchText, webSearch } from "../tools/web";
+import { RESEARCHER_SYSTEM, VERIFIER_SYSTEM } from "./system-prompts";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // Research synthesis is factual organisation, not on-air patter — the config
 // defaults it to a faster model than the DJ's qwen3-235b (settings.toml [models].research).
 const RESEARCH_MODEL = config.models.research;
-const MAX_PAGES = 5;
-const PAGE_CHARS = 5000;
+const VERIFY_MODEL = config.models.verify;
+const MAX_PAGES = 10;
+const PAGE_CHARS = 12_000;
+const PER_QUERY = 6;
+
+/**
+ * Fact-check pass: re-read the draft notes against the source texts and quarantine
+ * anything that's inferred or rests only on weak sources (mirrors an editorial
+ * fact-checker). Best-effort — on failure we keep the unverified draft rather than
+ * lose the research, but we flag it in the notes.
+ */
+async function verifyNotes(draft: string, sources: string[]): Promise<string> {
+  const user = [
+    "Fact-check and correct the DRAFT research notes below against the SOURCES.",
+    "Move inferred / weak-source / single-source claims into the quarantine section; keep",
+    "well-supported facts in the body with inline attribution. Output ONLY the corrected notes.",
+    "",
+    "--- DRAFT NOTES ---",
+    draft,
+    "",
+    "--- SOURCES ---",
+    sources.join("\n\n---\n\n"),
+  ].join("\n");
+  const verified = await complete(VERIFIER_SYSTEM, user, VERIFY_MODEL);
+  if (!verified.trim()) {
+    process.stderr.write("[researcher] verify produced no output — keeping unverified draft\n");
+    return draft + "\n\n> ⚠️ Fact-check pass produced no output; the above is UNVERIFIED.\n";
+  }
+  return verified;
+}
 
 /**
  * Verbatim lyrics for the album's tracks (from LRCLIB), appended to the notes so
@@ -58,36 +86,51 @@ export async function researchAlbum(
   const queries = [
     `${album} ${artist} album making of recording`,
     `${album} ${artist} producer studio recording process`,
-    `${album} ${artist} gear instruments equipment`,
-    `${album} ${artist} interview songwriting recording`,
+    `${album} ${artist} gear instruments equipment signal chain`,
+    `${album} ${artist} vocal production mixing technique`,
+    `${album} ${artist} track by track songwriting interview`,
   ];
   if (focus) queries.push(`${album} ${artist} ${focus}`);
 
-  // Gather unique results across a few spaced searches.
-  const seen = new Set<string>();
-  const hits: SearchResult[] = [];
+  // Search each query, keeping results grouped so we can interleave them fairly.
+  // (A flat first-come dedup lets query 1's hits fill the whole fetch budget, so
+  // the gear/technique/track queries never get fetched — which is exactly how the
+  // recording-chain detail went missing. Round-robin fixes that.)
+  const perQuery: SearchResult[][] = [];
   for (const q of queries) {
     try {
-      for (const r of await webSearch(q, 6)) {
-        if (r.url && !seen.has(r.url)) {
-          seen.add(r.url);
-          hits.push(r);
-        }
-      }
+      perQuery.push(await webSearch(q, PER_QUERY));
     } catch (e) {
       process.stderr.write(`[researcher] search failed (${q}): ${String(e)}\n`);
+      perQuery.push([]);
     }
     await delay(1200);
+  }
+
+  // Round-robin across queries (rank 0 of every query, then rank 1, …) so each
+  // topic contributes to the fetched set before we hit MAX_PAGES.
+  const seen = new Set<string>();
+  const hits: SearchResult[] = [];
+  for (let rank = 0; rank < PER_QUERY; rank++) {
+    for (const results of perQuery) {
+      const r = results[rank];
+      if (r?.url && !seen.has(r.url)) {
+        seen.add(r.url);
+        hits.push(r);
+      }
+    }
   }
   process.stderr.write(`[researcher] ${hits.length} unique results from ${queries.length} queries\n`);
   if (!hits.length) throw new Error("researcher found no search results (is BRAVE_API_KEY set/valid?)");
 
-  // Fetch the top pages (polite, spaced) as source text.
+  // Fetch the top pages (polite, spaced) as source text, each tagged with a
+  // reliability tier so the synthesis + fact-check can weight/quarantine claims.
   const sources: string[] = [];
   for (const h of hits.slice(0, MAX_PAGES)) {
     try {
       const text = await webFetchText(h.url, PAGE_CHARS);
-      sources.push(`### SOURCE: ${h.title}\nURL: ${h.url}\n\n${text}`);
+      const tier = sourceReliability(h.url);
+      sources.push(`### SOURCE [${tier}]: ${h.title}\nURL: ${h.url}\n\n${text}`);
     } catch (e) {
       process.stderr.write(`[researcher] fetch failed (${h.url}): ${String(e)}\n`);
     }
@@ -116,7 +159,12 @@ export async function researchAlbum(
   const notes = await complete(RESEARCHER_SYSTEM, user, RESEARCH_MODEL);
   if (!notes.trim()) throw new Error("researcher synthesis produced no notes");
 
-  // Append a verbatim lyrics bank (kept out of the LLM synthesis so it stays exact).
+  // Fact-check the draft against the sources before it reaches the Writer.
+  process.stderr.write(`[researcher] fact-checking draft (${notes.length} chars)…\n`);
+  const verified = await verifyNotes(notes, sources);
+  process.stderr.write(`[researcher] verified notes: ${verified.length} chars\n`);
+
+  // Append a verbatim lyrics bank (kept out of the LLM passes so it stays exact).
   const lyrics = await gatherLyrics(album, artist);
-  writeFileSync(notesPath, notes + lyrics, "utf-8");
+  writeFileSync(notesPath, verified + lyrics, "utf-8");
 }

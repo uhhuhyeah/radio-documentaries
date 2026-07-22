@@ -12,6 +12,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 
 import * as budget from "../budget";
 import * as catalog from "../catalog";
+import { factCheckFiles } from "../factcheck";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum } from "../navidrome";
 import { renderEpisode } from "../render";
@@ -103,6 +104,26 @@ export const lintScriptTool = defineTool({
         ? "lint: OK — no issues"
         : `lint: ${errors} error(s), ${warnings} warning(s)\n` + findings.map((f) => `  [${f.level}] ${f.msg}`).join("\n");
     return result(summary, { errors, warnings, findings });
+  },
+});
+
+export const factCheckScriptTool = defineTool({
+  name: "factcheck_script",
+  label: "Fact-check script",
+  description:
+    "Check a script.md's album/making-of claims against the research notes. Flags CONTRADICTION and " +
+    "UNSUPPORTED (invented) facts; ignores the host's persona colour, opinion, and lyrics. Advisory — " +
+    "surfaces findings for review, does not block like lint.",
+  parameters: Type.Object({ scriptPath: Type.String(), researchPath: Type.String() }),
+  execute: async (_id, params) => {
+    const findings = await factCheckFiles(params.scriptPath, params.researchPath);
+    const contradictions = findings.filter((f) => f.severity === "CONTRADICTION").length;
+    const summary =
+      findings.length === 0
+        ? "factcheck: OK — no unsupported or contradicted album-facts"
+        : `factcheck: ${findings.length} finding(s), ${contradictions} contradiction(s)\n` +
+          findings.map((f) => `  [${f.severity}] ${f.quote} — ${f.issue}`).join("\n");
+    return result(summary, { findings, contradictions });
   },
 });
 
@@ -200,6 +221,7 @@ export const documentaryTools = [
   researchAlbumTool,
   writeScriptTool,
   lintScriptTool,
+  factCheckScriptTool,
   budgetEstimateTool,
   renderEpisodeTool,
   navidromeFindAlbumTool,

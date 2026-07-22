@@ -22,6 +22,64 @@ export interface SearchResult {
   snippet: string;
 }
 
+export type Reliability = "reliable" | "low-trust" | "unrated";
+
+// Established music journalism + reference works — treated as citable on their own.
+const RELIABLE_HOSTS = [
+  "wikipedia.org",
+  "pitchfork.com",
+  "stereogum.com",
+  "rollingstone.com",
+  "billboard.com",
+  "npr.org",
+  "nytimes.com",
+  "theguardian.com",
+  "consequence.net",
+  "consequenceofsound.net",
+  "nme.com",
+  "vulture.com",
+  "thefader.com",
+  "ew.com",
+  "spin.com",
+  "newyorker.com",
+  "pastemagazine.com",
+  "variety.com",
+  "allmusic.com",
+  // gear/engineering trade press — the good source for recording-chain detail
+  "soundonsound.com",
+  "tapeop.com",
+  "mixonline.com",
+];
+
+// Crowd-sourced / fan / forum content — usable as corroboration, never as the sole
+// basis for a stated fact (this is where the bogus gear + credits crept in).
+const LOW_TRUST_HOSTS = [
+  "equipboard.com",
+  "genius.com",
+  "fandom.com",
+  "wikia.com",
+  "reddit.com",
+  "quora.com",
+  "last.fm",
+  "songfacts.com",
+  "pinterest.com",
+  "medium.com",
+];
+
+/** Coarse reliability tier for a source URL, used to weight/quarantine its claims. */
+export function sourceReliability(url: string): Reliability {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return "unrated";
+  }
+  const matches = (h: string): boolean => host === h || host.endsWith(`.${h}`);
+  if (LOW_TRUST_HOSTS.some(matches)) return "low-trust";
+  if (RELIABLE_HOSTS.some(matches)) return "reliable";
+  return "unrated";
+}
+
 // --- pure helpers ------------------------------------------------------------
 
 export function htmlToText(html: string): string {

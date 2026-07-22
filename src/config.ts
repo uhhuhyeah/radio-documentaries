@@ -18,7 +18,7 @@ export interface VoiceConfig {
 }
 
 export interface Config {
-  models: { research: string; write: string; producer: string; timeoutMs: number };
+  models: { research: string; write: string; producer: string; verify: string; timeoutMs: number };
   elevenlabs: { model: string };
   voices: Record<string, VoiceConfig>;
 }
@@ -28,6 +28,7 @@ const DEFAULTS: Config = {
     research: "qwen/qwen3-30b-a3b-instruct-2507",
     write: "qwen/qwen3-30b-a3b-instruct-2507",
     producer: "qwen/qwen3-235b-a22b-2507",
+    verify: "qwen/qwen3-30b-a3b-instruct-2507",
     timeoutMs: 300_000,
   },
   elevenlabs: { model: "eleven_flash_v2_5" },
@@ -53,6 +54,7 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
       research: process.env.DOCS_RESEARCH_MODEL ?? m.research ?? DEFAULTS.models.research,
       write: process.env.DOCS_WRITE_MODEL ?? m.write ?? DEFAULTS.models.write,
       producer: process.env.DOCS_PRODUCER_MODEL ?? m.producer ?? DEFAULTS.models.producer,
+      verify: process.env.DOCS_VERIFY_MODEL ?? m.verify ?? DEFAULTS.models.verify,
       timeoutMs: Number(process.env.DOCS_LLM_TIMEOUT_MS ?? m.timeout_ms ?? DEFAULTS.models.timeoutMs),
     },
     elevenlabs: { model: el.model ?? DEFAULTS.elevenlabs.model },

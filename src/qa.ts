@@ -39,11 +39,56 @@ const wordCount = (s: string): number => s.split(/\s+/).filter(Boolean).length;
 export function normalizeLyric(s: string): string {
   return s
     .toLowerCase()
-    .replace(/[“”„‟«»]/g, '"') // smart double quotes
-    .replace(/[‘’‚‛`´]/g, "'") // smart single quotes / apostrophes
-    .replace(/[^\w' ]+/g, " ") // strip remaining punctuation
+    .replace(/[‘’‚‛`´]/g, "'") // smart single quotes / apostrophes -> '
+    .replace(/'/g, "") // DROP apostrophes: lover's->lovers, we're->were, fuckin'->fuckin
+    .replace(/[^\w ]+/g, " ") // strip all remaining punctuation (smart double quotes, hyphens, /, …)
+    .replace(/\b(?:[a-z] )+[a-z]\b/g, (m) => m.replace(/ /g, "")) // collapse spelled-out runs: l o v e -> love
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Lyric-match tiers. A quoted span's similarity to its best-matching window in the
+// bank sorts it into: verbatim-enough (pass), a real lyric imperfectly quoted (fix),
+// or no meaningful match at all (likely dialogue, possibly a fabrication). Tuned to
+// let transcription noise (LRCLIB vs the script — "fuckin'"/"fucking", spelled-out
+// letters, a stray article) pass, while still catching genuine misquotes.
+const LYRIC_OK = 0.9; // >= this: treat as verbatim
+const LYRIC_FIX = 0.55; // >= this (but < OK): a real lyric, not exact -> fix it
+
+/**
+ * Min edit distance between `needle` and its best-matching *substring* of `hay`
+ * (row-0 seeded to 0 so a match may start anywhere). O(needle·hay); pure.
+ */
+function bestSubstringDistance(needle: string, hay: string): number {
+  const n = needle.length;
+  if (n === 0) return 0;
+  const m = hay.length;
+  let prev = new Array<number>(m + 1).fill(0);
+  for (let i = 1; i <= n; i++) {
+    const cur = new Array<number>(m + 1);
+    cur[0] = i;
+    const nc = needle.charCodeAt(i - 1);
+    for (let j = 1; j <= m; j++) {
+      const diag = prev[j - 1]! + (nc === hay.charCodeAt(j - 1) ? 0 : 1);
+      const up = prev[j]! + 1;
+      const left = cur[j - 1]! + 1;
+      cur[j] = diag < up ? (diag < left ? diag : left) : up < left ? up : left;
+    }
+    prev = cur;
+  }
+  return Math.min(...prev);
+}
+
+/** Similarity in [0,1] of `needle` to its closest substring of `hay` (1 = verbatim). Pure. */
+export function fuzzySubstringSimilarity(needle: string, hay: string): number {
+  if (!needle) return 0;
+  return Math.max(0, 1 - bestSubstringDistance(needle, hay) / needle.length);
+}
+
+/** Classify a quoted span against a NORMALISED lyric bank. Pure. */
+export function lyricTier(span: string, normBank: string): "ok" | "fix" | "unknown" {
+  const sim = fuzzySubstringSimilarity(normalizeLyric(span), normBank);
+  return sim >= LYRIC_OK ? "ok" : sim >= LYRIC_FIX ? "fix" : "unknown";
 }
 
 /**
@@ -97,8 +142,17 @@ export function qaText(scriptText: string, researchText: string): Finding[] {
         const norm = normalizeLyric(span);
         if (!norm || seen.has(norm)) continue;
         seen.add(norm);
-        if (!bank.includes(norm)) {
-          warn(`possible fabricated lyric (not verbatim in the Track Lyrics bank): ${JSON.stringify(span)}`);
+        // Tiered instead of a binary substring test: a fuzzy match separates a real
+        // lyric imperfectly quoted (fix it) from a span with no bank match (dialogue,
+        // or a fabrication if it's meant to be sung) — and lets transcription noise pass.
+        const tier = lyricTier(span, bank);
+        if (tier === "fix") {
+          warn(`non-verbatim lyric — close but not exact; quote it verbatim from the Track Lyrics bank: ${JSON.stringify(span)}`);
+        } else if (tier === "unknown") {
+          warn(
+            `unverified quoted span — not found in the Track Lyrics bank; a fabricated lyric if it's sung, ` +
+              `ignore if it's dialogue: ${JSON.stringify(span)}`,
+          );
         }
       }
     }

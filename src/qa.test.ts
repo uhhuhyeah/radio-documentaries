@@ -53,6 +53,43 @@ describe("lyric fidelity", () => {
     const f = qa.qaText(script(INTRO_OK, 'She sings "the neon lights are burning out tonight" and it aches.'), "# Notes\n\nNo lyrics here.\n");
     expect(has(f, "WARN", "fabricated lyric")).toBe(false);
   });
+
+  it("passes a real lyric quoted with transcription noise (does NOT cry fabrication)", () => {
+    // Same words as the bank, but with a stray article and punctuation the way LRCLIB
+    // vs the script often differ — must not flag as fabricated or non-verbatim.
+    const f = qa.qaText(script(INTRO_OK, "She sings “Dreaming through the Tokyo skyline… I wanted to see” here."), RESEARCH);
+    expect(has(f, "WARN", "fabricated")).toBe(false);
+    expect(has(f, "WARN", "non-verbatim")).toBe(false);
+  });
+
+  it("flags a genuinely misquoted lyric as non-verbatim, not as a fabrication", () => {
+    const f = qa.qaText(script(INTRO_OK, 'She sings "Dreaming past the neon skyline, I longed to feel it all" softly.'), RESEARCH);
+    expect(has(f, "WARN", "non-verbatim")).toBe(true);
+    expect(has(f, "WARN", "fabricated")).toBe(false);
+  });
+});
+
+describe("lyric matching internals", () => {
+  it("normalizeLyric collapses spelled-out runs and drops apostrophes", () => {
+    expect(qa.normalizeLyric("L-O-V-E-L-E-S-S")).toBe("loveless");
+    expect(qa.normalizeLyric("lover's")).toBe("lovers");
+    expect(qa.normalizeLyric("We're")).toBe("were");
+    expect(qa.normalizeLyric("“Smart, quotes!”")).toBe("smart quotes");
+  });
+
+  it("fuzzySubstringSimilarity: 1 for a verbatim substring, ~0 for no overlap", () => {
+    expect(qa.fuzzySubstringSimilarity("hello", "well hello there")).toBe(1);
+    expect(qa.fuzzySubstringSimilarity("hello", "well helo there")).toBeCloseTo(0.8, 5); // one deletion
+    expect(qa.fuzzySubstringSimilarity("hello", "zzzzzzz")).toBeLessThan(0.4);
+  });
+
+  it("lyricTier: verbatim/near-verbatim → ok, reworded → fix, unrelated → unknown", () => {
+    const bank = qa.normalizeLyric("got a picture of you dying in my mind");
+    expect(qa.lyricTier("Got a picture of you dying in my mind", bank)).toBe("ok");
+    expect(qa.lyricTier("I got a picture of you dying in my mind", bank)).toBe("ok"); // stray article
+    expect(qa.lyricTier("Got a photo of you fading in my head", bank)).toBe("fix"); // reworded lyric
+    expect(qa.lyricTier("welcome back to the show everyone", bank)).toBe("unknown"); // dialogue
+  });
 });
 
 describe("station ident", () => {

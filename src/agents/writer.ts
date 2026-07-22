@@ -5,10 +5,16 @@
  */
 
 import { config } from "../config";
-import { PERSONAS } from "../constants";
+import { PERSONAS, WORDS_PER_MINUTE } from "../constants";
 import { complete } from "../llm";
 import * as sm from "../scriptmodel";
 import { WRITER_SYSTEM } from "./system-prompts";
+
+// Length is settled HERE, at generation — never via a revision (deepening a draft pads and invents;
+// we watched factcheck go 2→14 that way). A fresh write that lands short is regenerated fresh (the
+// track-by-track length is variable run to run); a revision is a single pass that preserves length.
+const HOUSE_MIN_MINUTES = 20; // matches the qa.ts house floor
+const MAX_FRESH_ATTEMPTS = 3; // 1 + up to 2 fresh regenerations to clear the floor
 
 function personaBlock(hostId: string, hostName: string): string {
   const p = PERSONAS[hostId];
@@ -203,12 +209,49 @@ export function buildWriterMessage(input: WriterInput): string {
   return [...head, ``, ...tail].join("\n");
 }
 
+/** Spoken minutes of a finished script (0 if it won't parse). Pure. */
+export function spokenMinutes(script: string): number {
+  try {
+    const ep = sm.parse(script);
+    const words = sm.spokenSlots(ep).reduce((n, s) => n + s.body.split(/\s+/).filter(Boolean).length, 0);
+    return words / WORDS_PER_MINUTE;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Run the generator, retrying FRESH writes until the spoken runtime clears the house floor (keeping
+ * the longest attempt), so length is settled at generation and never leaks into the revision loop.
+ * A revise pass runs exactly once — it must preserve length, not grow it. Injectable `gen` for tests.
+ */
+export async function generateForLength(
+  gen: () => Promise<string>,
+  opts: { revising: boolean; minMinutes?: number; maxAttempts?: number },
+): Promise<string> {
+  const min = opts.minMinutes ?? HOUSE_MIN_MINUTES;
+  const attempts = opts.revising ? 1 : (opts.maxAttempts ?? MAX_FRESH_ATTEMPTS);
+  let best = "";
+  let bestMin = -1;
+  for (let i = 0; i < attempts; i++) {
+    const script = await gen();
+    const m = spokenMinutes(script);
+    if (m > bestMin) {
+      best = script;
+      bestMin = m;
+    }
+    if (opts.revising || m >= min) break; // revise: one pass; fresh: stop once in range
+  }
+  return best;
+}
+
 export async function writeScript(input: WriterInput): Promise<string> {
-  const raw = await complete(WRITER_SYSTEM, buildWriterMessage(input));
-  const cleaned = stripSpokenMarkdown(raw); // deterministically clean spoken bodies (no lint noise)
-  const script = capSongSlots(cleaned); // enforce the 3–5 song cap (the length prompt over-produces)
-  // Make the declared reference_tracks match the SONG slots actually written
-  // (after the cap; the front matter should describe reality).
+  const revising = !!(input.revisionNotes && input.previousDraft);
+  // One finished attempt: generate, strip markdown, cap songs. Fresh writes may run a few times to
+  // clear the length floor; the reference_tracks reconcile happens once on the chosen script.
+  const gen = async (): Promise<string> =>
+    capSongSlots(stripSpokenMarkdown(await complete(WRITER_SYSTEM, buildWriterMessage(input))));
+  const script = await generateForLength(gen, { revising });
   const nSongs = sm.songSlots(sm.parse(script)).length;
   return script.replace(/^reference_tracks:.*$/m, `reference_tracks: ${nSongs}`);
 }

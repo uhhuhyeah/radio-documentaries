@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import * as lint from "../lint";
 import * as sm from "../scriptmodel";
-import { buildWriterMessage, capSongSlots, keepIndices, stripSpokenMarkdown, type WriterInput } from "./writer";
+import { buildWriterMessage, capSongSlots, generateForLength, keepIndices, spokenMinutes, stripSpokenMarkdown, type WriterInput } from "./writer";
 
 const BASE: WriterInput = {
   album: "Weathervanes",
@@ -131,5 +131,51 @@ describe("capSongSlots", () => {
   it("leaves a script with ≤5 songs untouched", () => {
     const four = build(4);
     expect(capSongSlots(four)).toBe(four);
+  });
+});
+
+describe("generateForLength (fresh length retry)", () => {
+  const FM = '---\nseason: 1\nepisode: 1\nalbum: "A"\nartist: "B"\nhost: p_cara\nhost_name: "Cara"\nmodel: eleven_flash_v2_5\ntarget_minutes: 25\nreference_tracks: 1\n---\n';
+  // A parseable script whose single SPOKEN slot holds `words` words → spokenMinutes = words/150.
+  const scriptOf = (words: number): string =>
+    `${FM}## [01] SPOKEN · intro\n${Array(words).fill("word").join(" ")}\n`;
+
+  const counting = (lengths: number[]): [() => Promise<string>, () => number] => {
+    let calls = 0;
+    const gen = (): Promise<string> => Promise.resolve(scriptOf(lengths[Math.min(calls++, lengths.length - 1)]!));
+    return [gen, () => calls];
+  };
+
+  it("spokenMinutes measures spoken words / WPM", () => {
+    expect(spokenMinutes(scriptOf(3300))).toBeCloseTo(22, 5); // in the 20–30 house range
+    expect(spokenMinutes(scriptOf(2000))).toBeCloseTo(13.3, 1); // short
+  });
+
+  it("fresh: stops on the first in-range attempt", async () => {
+    const [gen, calls] = counting([3300]); // 22 min
+    const out = await generateForLength(gen, { revising: false });
+    expect(calls()).toBe(1);
+    expect(spokenMinutes(out)).toBeCloseTo(22, 5);
+  });
+
+  it("fresh: regenerates past short drafts, then takes the in-range one", async () => {
+    const [gen, calls] = counting([2000, 2100, 3300]); // short, short, in-range
+    const out = await generateForLength(gen, { revising: false });
+    expect(calls()).toBe(3);
+    expect(spokenMinutes(out)).toBeCloseTo(22, 5);
+  });
+
+  it("fresh: if all attempts are short, keeps the LONGEST (bounded by maxAttempts)", async () => {
+    const [gen, calls] = counting([2000, 2600, 2400]); // none in range; longest is #2 (2600)
+    const out = await generateForLength(gen, { revising: false });
+    expect(calls()).toBe(3); // used the full budget
+    expect(spokenMinutes(out)).toBeCloseTo(2600 / 150, 5);
+  });
+
+  it("revise: exactly one pass even when short (length is preserved, never grown)", async () => {
+    const [gen, calls] = counting([2000, 3300]);
+    const out = await generateForLength(gen, { revising: true });
+    expect(calls()).toBe(1); // no retry in revise mode
+    expect(spokenMinutes(out)).toBeCloseTo(13.3, 1);
   });
 });

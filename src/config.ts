@@ -10,7 +10,17 @@ import { fileURLToPath } from "node:url";
 
 import { parse as parseToml } from "smol-toml";
 
-const CONFIG_PATH = process.env.DOCS_CONFIG ?? join(dirname(fileURLToPath(import.meta.url)), "..", "settings.toml");
+import { loadDotenv } from "./navidrome";
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const CONFIG_PATH = process.env.DOCS_CONFIG ?? join(REPO_ROOT, "settings.toml");
+
+// Load .env into process.env BEFORE the eager loadConfig() below reads it, so DOCS_* env
+// overrides (e.g. DOCS_NAS_LOCAL) apply even when an entrypoint imports `config` before it
+// calls loadDotenv itself (ESM evaluates this module at import time). loadDotenv is
+// non-overriding, so a value already set (e.g. by a systemd EnvironmentFile) still wins.
+// Skipped under vitest to keep tests hermetic — they set env explicitly.
+if (!process.env.VITEST) loadDotenv(join(REPO_ROOT, ".env"));
 
 export interface VoiceConfig {
   voiceId: string;

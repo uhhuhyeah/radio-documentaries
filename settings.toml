@@ -27,9 +27,14 @@ model = "eleven_flash_v2_5"
 per_episode_cap = 15000
 
 # Where rendered audio is copied onto the NAS Music share, used by `pnpm cli stage-audio`.
-# ssh_host must have the Music share mounted READ-WRITE (the PVE host; Navidrome's LXC mount is
-# read-only). Files go to <music_dir>/<episode-dir-name>/. Env: DOCS_NAS_SSH_HOST / DOCS_NAS_MUSIC_DIR.
+# Files go to <music_dir>/<episode-dir-name>/. Two modes:
+#   local = false (default, dev box): rsync over SSH to ssh_host, which must have the Music share
+#           mounted READ-WRITE (the PVE host; Navidrome's LXC mount is read-only).
+#   local = true (the pipeline LXC): the share is bind-mounted read-write here, so copy straight to
+#           music_dir — no SSH. Set music_dir to the local mount, e.g. /mnt/music/subwave-documentaries.
+# Env overrides: DOCS_NAS_LOCAL (1/true) / DOCS_NAS_MUSIC_DIR / DOCS_NAS_SSH_HOST.
 [nas]
+local = false
 ssh_host = "root@100.110.0.9"
 music_dir = "/mnt/nas/music/subwave-documentaries"
 

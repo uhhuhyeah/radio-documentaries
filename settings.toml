@@ -19,6 +19,13 @@ timeout_ms = 560000
 # `render --model` overrides at render time). eleven_flash_v2_5 ≈0.5 cr/char; eleven_multilingual_v2 ≈1.
 model = "eleven_flash_v2_5"
 
+# Where rendered audio is copied onto the NAS Music share, used by `pnpm cli stage-audio`.
+# ssh_host must have the Music share mounted READ-WRITE (the PVE host; Navidrome's LXC mount is
+# read-only). Files go to <music_dir>/<episode-dir-name>/. Env: DOCS_NAS_SSH_HOST / DOCS_NAS_MUSIC_DIR.
+[nas]
+ssh_host = "root@100.110.0.9"
+music_dir = "/mnt/nas/music/subwave-documentaries"
+
 # Per-persona ElevenLabs voice (from subwave-config). Keys are persona ids.
 [voices.p_cara]
 voice_id = "ZF6FPAbjXT4488VcRRnw"  # "Amelia"

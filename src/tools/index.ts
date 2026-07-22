@@ -16,6 +16,7 @@ import { factCheckFiles } from "../factcheck";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum } from "../navidrome";
 import { renderEpisode } from "../render";
+import { stageAudio } from "../stage";
 import { researchAlbumTool, writeScriptTool } from "./subagents";
 import { toolResult as result } from "./util";
 
@@ -212,6 +213,24 @@ export const navidromeCreatePlaylistTool = defineTool({
   },
 });
 
+export const stageAudioTool = defineTool({
+  name: "stage_audio",
+  label: "Stage audio to NAS",
+  description:
+    "Copy an episode's rendered MP3s from its working dir onto the NAS Music share (via the read-write " +
+    "PVE host) so Navidrome can index them. Pass replace=true to mirror (remove stale files) when " +
+    "re-publishing, rescan=true to trigger a Navidrome scan afterward. Run before navidrome publish.",
+  parameters: Type.Object({
+    workdir: Type.String({ description: "Episode working dir, e.g. S01E01-punisher" }),
+    replace: Type.Optional(Type.Boolean({ description: "Mirror: remove NAS files not in the local audio dir." })),
+    rescan: Type.Optional(Type.Boolean({ description: "Trigger a Navidrome rescan after copying." })),
+  }),
+  execute: async (_id, params) => {
+    const r = await stageAudio(params.workdir, { replace: params.replace, rescan: params.rescan });
+    return result(`staged ${r.files} file(s) → ${r.host}:${r.dest}${r.rescanned ? " (rescan triggered)" : ""}`, r);
+  },
+});
+
 /** All tools the Producer agent may call. */
 export const documentaryTools = [
   catalogNextTool,
@@ -224,6 +243,7 @@ export const documentaryTools = [
   factCheckScriptTool,
   budgetEstimateTool,
   renderEpisodeTool,
+  stageAudioTool,
   navidromeFindAlbumTool,
   navidromeAlbumSongsTool,
   navidromeScanStatusTool,

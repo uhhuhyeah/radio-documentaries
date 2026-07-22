@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildWriterMessage, type WriterInput } from "./writer";
+import * as lint from "../lint";
+import { buildWriterMessage, stripSpokenMarkdown, type WriterInput } from "./writer";
 
 const BASE: WriterInput = {
   album: "Weathervanes",
@@ -47,5 +48,41 @@ describe("buildWriterMessage", () => {
     const msg = buildWriterMessage({ ...BASE, revisionNotes: "fix things" });
     expect(msg).not.toContain("REVISION PASS");
     expect(msg).toContain("Write the FULL 25-minute script now");
+  });
+});
+
+describe("stripSpokenMarkdown", () => {
+  const script = [
+    "---",
+    "season: 1",
+    "host_name: Cara",
+    "reference_tracks: 1",
+    "---",
+    "## [01] SPOKEN · intro",
+    "Welcome to **Subwave**. This is a `great` record — see [the interview](https://x.com).",
+    "",
+    "## [02] SONG · song-1",
+    "- title: Death Wish",
+    "- note: features **strings** and a link [x](https://y.com)",
+  ].join("\n");
+
+  it("strips *, `, and links from SPOKEN bodies only", () => {
+    const out = stripSpokenMarkdown(script);
+    expect(out).toContain("Welcome to Subwave. This is a great record — see the interview.");
+    // Front matter and SONG metadata are left verbatim (not spoken → not TTS'd).
+    expect(out).toContain("- note: features **strings** and a link [x](https://y.com)");
+    expect(out).toContain("## [01] SPOKEN · intro"); // heading untouched
+  });
+
+  it("leaves clean prose unchanged", () => {
+    const clean = "## [01] SPOKEN · intro\nJust clean prose here, nothing to strip.";
+    expect(stripSpokenMarkdown(clean)).toBe(clean);
+  });
+
+  it("output no longer trips lint's markdown-in-spoken warning", () => {
+    const before = lint.lintText(script).some((f) => /SPOKEN body has markdown/.test(f.msg));
+    const after = lint.lintText(stripSpokenMarkdown(script)).some((f) => /SPOKEN body has markdown/.test(f.msg));
+    expect(before).toBe(true);
+    expect(after).toBe(false);
   });
 });

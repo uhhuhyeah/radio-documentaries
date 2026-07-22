@@ -10,11 +10,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "cli": "tsx src/cli.ts",
-    "producer": "tsx src/producer-run.ts"
+    "producer": "tsx src/producer-run.ts",
+    "mcp": "tsx src/mcp.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.80.10",
     "@earendil-works/pi-coding-agent": "^0.80.10",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "node-id3": "^0.2.9",
     "smol-toml": "^1.7.0",
     "typebox": "^1.3.6"

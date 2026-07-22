@@ -25,6 +25,8 @@ export interface Config {
   budget: { perEpisodeCap: number };
   /** How rendered audio is copied onto the NAS Music share (Navidrome's own mount is read-only). */
   nas: { sshHost: string; musicDir: string };
+  /** The MCP HTTP server (src/mcp.ts). Port only — the bearer token stays env-only (secret). */
+  mcp: { port: number };
 }
 
 const DEFAULTS: Config = {
@@ -46,6 +48,8 @@ const DEFAULTS: Config = {
   budget: { perEpisodeCap: 15000 },
   // The PVE host has the NAS Music share mounted read-write; Navidrome's LXC mount is read-only.
   nas: { sshHost: "root@100.110.0.9", musicDir: "/mnt/nas/music/subwave-documentaries" },
+  // MCP HTTP server port. Hermes (CTID 105) connects to it as a remote toolset over the LAN.
+  mcp: { port: 8848 },
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -54,6 +58,7 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
   const m = raw.models ?? {};
   const el = raw.elevenlabs ?? {};
   const bg = raw.budget ?? {};
+  const mcp = raw.mcp ?? {};
 
   const voices: Record<string, VoiceConfig> = {};
   for (const [id, v] of Object.entries<any>(raw.voices ?? {})) {
@@ -76,6 +81,9 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
     nas: {
       sshHost: process.env.DOCS_NAS_SSH_HOST ?? raw.nas?.ssh_host ?? DEFAULTS.nas.sshHost,
       musicDir: process.env.DOCS_NAS_MUSIC_DIR ?? raw.nas?.music_dir ?? DEFAULTS.nas.musicDir,
+    },
+    mcp: {
+      port: Number(process.env.DOCS_MCP_PORT ?? mcp.port ?? DEFAULTS.mcp.port),
     },
   };
 }

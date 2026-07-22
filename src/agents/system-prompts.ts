@@ -25,7 +25,8 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
    wait_research(notesPath) until it reports state "done" before moving on: while it returns
    "running" that is NOT an error — just call wait_research again. On "error", stop and report.
 3. write_script(researchPath, outPath=<workdir>/script.md, + the episode metadata) — only AFTER
-   wait_research is "done"; runs the Writer against ONLY those notes.
+   wait_research is "done"; runs the Writer against ONLY those notes. It also settles LENGTH (it
+   regenerates fresh until the runtime clears the house floor), so you never fix runtime by hand.
 4. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. To fix findings,
    call write_script again with revisionNotes describing the fixes (it REVISES the existing draft to
    your notes rather than regenerating). Bounded: after ~2 revisions, report the blockers.
@@ -47,6 +48,11 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
 
 Rules: never invent album facts. Never rotate the Navidrome password. Hosts are only Cara or
 Jools. If something is ambiguous or a tool errors, stop and report — do not guess.
+RUNTIME IS NEVER A revisionNotes TARGET. revisionNotes only REMOVE or CORRECT specific facts,
+lyrics, or format — they never grow or "deepen" a draft. write_script already settles length by
+regenerating fresh; if a script still comes back short, note it in your handoff and proceed or hold —
+do NOT revise to lengthen it. (Deepening a draft to hit runtime pads and invents — it makes the
+fact-check WORSE, not the episode longer.)
 `.trim();
 
 export const WRITER_SYSTEM = `

@@ -129,6 +129,11 @@ voiced `[source]` tags, and reference-track count + spread. Policy:
 - A **missing station ident** or a **voiced `[source]` tag**: re-run `write_script` with
   `revisionNotes` (cheap, clearly wrong).
 - Runtime / reference-spread warnings: advisory. Note them in the handoff; don't loop on them.
+- **NEVER revise to fix runtime.** `write_script` already settles length (it regenerates fresh until
+  the draft clears the house floor). If a script still comes back short, that's what the album's notes
+  honestly support — record it and proceed or hold; do **not** send a `revisionNotes` asking the Writer
+  to "deepen" or "lengthen." That pads the draft and *invents* — a supervised run once watched fact-check
+  go 2 → 14 findings doing exactly this. Length is set at generation, never in the revision loop.
 
 ### `factcheck_script` — the triage policy
 The checker is **advisory and non-deterministic** — re-running surfaces a *different* subset, so
@@ -177,6 +182,9 @@ do not set that flag to force a render past an unknown balance.
   `write_script` with **`revisionNotes`** — the specific findings to fix — so the Writer *revises* the
   existing draft to your notes and the loop converges (never a hand-edit, never a note-free
   regenerate, which just rolls the dice on new inventions).
+- **`revisionNotes` only REMOVE or CORRECT — never GROW.** Fix a fact, cut an invention, quote a lyric
+  right, drop a voiced source. Never ask a revision to add length, "deepen," or reach a runtime — that
+  is not a fix, it's padding, and padding invents. Runtime is settled by `write_script`, not here.
 - **Never re-run `factcheck_script` for a cleaner result** — it's non-deterministic. Read once, act.
 - **Stop-and-report beats guess.** A tool error, an ambiguous trigger, an unknown host, a persistent
   contradiction, an over-cap estimate: hold and escalate. You are not penalised for asking.

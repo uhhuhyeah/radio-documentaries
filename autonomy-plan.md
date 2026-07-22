@@ -284,7 +284,12 @@ This is where Hermes earns its keep — the work I did by hand each episode.
   opinion findings while still catching the "Rumours"/"closed" class.
 - **Depends on:** `src/factcheck.ts`, `SCRIPT_FACTCHECK_SYSTEM`.
 
-### T2-2 — Hermes decision contract (the PRODUCER playbook, productionized)
+### T2-2 — Hermes decision contract (the PRODUCER playbook, productionized) *(done)*
+- **Delivered:** [`hermes-playbook.md`](hermes-playbook.md) — Hermes's operating manual. Encodes the
+  phase model (tool-filtering is the gate), the flow (mirroring `PRODUCER_SYSTEM`), the read-the-result
+  rules for every gate (preflight HARD/SOFT, lint, QA lyric-fidelity HOLD, the fact-check triage
+  policy from T2-1, budget cap, credit hard-stop), the bounded-rewrite rule (2 total; never re-run
+  factcheck), the Telegram escalation format, and the hard rules. Point Hermes at it as its runbook.
 - **Goal:** encode what I did manually into Hermes's operating instructions.
 - **Why now:** the step order, the retry/proceed/escalate calls, the guardrails, and the
   "when to stop" judgments currently live in my head + `PRODUCER_SYSTEM`. Hermes needs an explicit,
@@ -410,7 +415,7 @@ Don't jump to fully hands-off. Graduate:
 | T1-4 | Safety | Rescan poll-with-timeout | — | S |
 | T1-5 | Safety | Idempotent end-to-end re-runs | T3-3 | S–M |
 | T2-1 | Quality | Fact-check triage policy + sharper checker | — | M |
-| T2-2 | Quality | Hermes decision contract (playbook) | T0-1, T1-*, T2-1, T2-4 | M |
+| T2-2 | Quality | Hermes decision contract (playbook) — **done** (`hermes-playbook.md`) | T0-1, T1-*, T2-1, T2-4 | M |
 | T2-3 | Quality | Deterministic quality floor (auto-QA) | — | S–M |
 | T2-4 | Quality | Human-in-the-loop escape hatch | T0-2, T3-2 | M |
 | T3-1 | Polish | Structured logging + run report | T0-2 | S–M |

@@ -311,6 +311,7 @@ async function main(): Promise<number> {
         audioDir: flag([...rest], "audio-dir"),
       });
       console.log(`rendered ${r.rendered} segment(s) → ${r.audioDir}\ncue → ${r.cuePath}`);
+      if (r.removed.length) console.log(`removed ${r.removed.length} orphan(s): ${r.removed.join(", ")}`);
       return 0;
     } catch (e) {
       console.error(`render error: ${String(e)}`);

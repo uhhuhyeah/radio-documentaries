@@ -10,7 +10,7 @@
  * (the ordered cue sheet the publish step consumes).
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import NodeID3 from "node-id3";
@@ -132,11 +132,46 @@ export function planEpisode(ep: sm.Episode): Plan {
   return { season, episode, steps, cue };
 }
 
+/**
+ * Delete orphaned segment MP3s left in `audioDir` by a previous render.
+ *
+ * `renderEpisode` only ever *writes* the segments the current plan produces; it
+ * never removes stale ones. When a script is restructured (slots reordered, a
+ * label renamed, a segment split), the old filenames — keyed by playback index
+ * and label — no longer match, so the previous run's files linger as orphans.
+ * They would otherwise be scanned/staged alongside the real episode. This makes
+ * `audioDir` authoritative for the full plan: any `.mp3` the plan does not
+ * produce is removed.
+ *
+ * Keyed on the *full plan's* filenames (not just this run's rendered subset), so
+ * a resumed `--skip-spoken` render keeps the segments an earlier run wrote.
+ * Returns the basenames it deleted.
+ */
+export function reconcileAudioDir(audioDir: string, expected: Iterable<string>): string[] {
+  const keep = new Set(expected);
+  const removed: string[] = [];
+  let entries: string[];
+  try {
+    entries = readdirSync(audioDir);
+  } catch {
+    return removed; // dir doesn't exist yet — nothing to reconcile
+  }
+  for (const name of entries) {
+    if (name.endsWith(".mp3") && !keep.has(name)) {
+      unlinkSync(join(audioDir, name));
+      removed.push(name);
+    }
+  }
+  return removed;
+}
+
 export interface RenderResult {
   audioDir: string;
   cuePath: string;
   rendered: number;
   cue: CueEntry[];
+  /** Orphaned segment files removed to reconcile the dir against the plan (full renders only). */
+  removed: string[];
 }
 
 export interface RenderOptions {
@@ -198,6 +233,13 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
     rendered++;
   }
 
+  // Reconcile the audio dir against the full plan so a restructured script's old
+  // segments don't linger and get staged. Only on a full render: a --max-spoken
+  // sample renders a subset, and --only re-renders a single segment in place —
+  // neither should delete the siblings it didn't touch.
+  const removed =
+    opts.maxSpoken || opts.onlyLabel ? [] : reconcileAudioDir(audioDir, plan.steps.map((s) => s.filename));
+
   // For a sample, the cue covers only the slots up to the last rendered segment.
   const lastIdx = steps.length ? steps[steps.length - 1]!.index : 0;
   const cue = opts.maxSpoken ? plan.cue.filter((c) => c.index <= lastIdx) : plan.cue;
@@ -209,5 +251,5 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
     JSON.stringify({ season: plan.season, episode: plan.episode, album: albumTag, audioDir, cue }, null, 2),
   );
 
-  return { audioDir, cuePath, rendered, cue };
+  return { audioDir, cuePath, rendered, cue, removed };
 }

@@ -10,6 +10,11 @@ import { existsSync, readFileSync } from "node:fs";
 export const DEFAULT_CLIENT = "subwave-docs";
 export const API_VERSION = "1.16.1";
 
+// waitForScan defaults: an hourly-scan library settles a fresh episode in seconds,
+// so 120s is generous; poll every 2s.
+export const DEFAULT_SCAN_TIMEOUT_MS = 120_000;
+export const DEFAULT_SCAN_INTERVAL_MS = 2_000;
+
 export class SubsonicError extends Error {}
 
 export interface Album {
@@ -29,6 +34,16 @@ export interface Song {
   track?: number;
   [k: string]: unknown;
 }
+
+/** getScanStatus payload: `scanning` (a rescan is in progress) + indexed track `count`. */
+export interface ScanStatus {
+  scanning?: boolean;
+  count?: number;
+  [k: string]: unknown;
+}
+
+/** Poll outcome: the rescan has settled, keep waiting, or we ran out of time. */
+export type ScanPollVerdict = "done" | "wait" | "timeout";
 
 // --- pure helpers ------------------------------------------------------------
 
@@ -84,6 +99,22 @@ export function matchSong(songs: Song[], title: string,
     }
   }
   return null;
+}
+
+/**
+ * Decide what a scan poll should do next, given the latest status and how long
+ * we've waited. Pure (no clock, no sleep) so it's unit-tested without the network,
+ * mirroring the pure/impure split in src/preflight.ts. A settled scan (done) wins
+ * over the timeout so a scan that finishes exactly at the deadline still succeeds.
+ */
+export function scanPollDecision(
+  status: ScanStatus,
+  elapsedMs: number,
+  timeoutMs: number,
+): ScanPollVerdict {
+  if (status.scanning === false) return "done";
+  if (elapsedMs >= timeoutMs) return "timeout";
+  return "wait";
 }
 
 /** Minimal .env loader (avoids a dotenv dependency). Existing env wins. */
@@ -185,6 +216,38 @@ export class Subsonic {
 
   async deletePlaylist(id: string): Promise<void> {
     await this.request("deletePlaylist", { id });
+  }
+}
+
+export interface WaitForScanOptions {
+  timeoutMs?: number;
+  intervalMs?: number;
+}
+
+/**
+ * Block until Navidrome's rescan settles (scanning:false), or throw once the
+ * timeout elapses. Only the loop does I/O — the verdict is `scanPollDecision`,
+ * and the sleep is kept out of that pure helper. Run this AFTER startScan() and
+ * BEFORE publish so we never publish against a half-scanned library.
+ */
+export async function waitForScan(
+  client: Pick<Subsonic, "scanStatus">,
+  opts: WaitForScanOptions = {},
+): Promise<ScanStatus> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_SCAN_TIMEOUT_MS;
+  const intervalMs = opts.intervalMs ?? DEFAULT_SCAN_INTERVAL_MS;
+  const start = Date.now();
+  for (;;) {
+    const status: ScanStatus = await client.scanStatus();
+    const verdict = scanPollDecision(status, Date.now() - start, timeoutMs);
+    if (verdict === "done") return status;
+    if (verdict === "timeout") {
+      throw new SubsonicError(
+        `Navidrome rescan did not settle within ${Math.round(timeoutMs / 1000)}s ` +
+          `(still scanning; count=${status.count ?? "?"})`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 }
 

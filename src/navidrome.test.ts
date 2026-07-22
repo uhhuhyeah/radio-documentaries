@@ -82,3 +82,31 @@ describe("loadDotenv", () => {
     expect(() => nd.loadDotenv("/nonexistent/path/.env")).not.toThrow();
   });
 });
+
+describe("scanPollDecision", () => {
+  const TIMEOUT = 120_000;
+
+  it("waits while a rescan is still in progress and time remains", () => {
+    expect(nd.scanPollDecision({ scanning: true, count: 5 }, 4_000, TIMEOUT)).toBe("wait");
+  });
+
+  it("is done once scanning is false", () => {
+    expect(nd.scanPollDecision({ scanning: false, count: 42 }, 4_000, TIMEOUT)).toBe("done");
+  });
+
+  it("times out when the elapsed time exceeds the timeout and the scan is still running", () => {
+    expect(nd.scanPollDecision({ scanning: true }, 130_000, TIMEOUT)).toBe("timeout");
+  });
+
+  it("times out at the exact boundary (elapsed === timeout)", () => {
+    expect(nd.scanPollDecision({ scanning: true }, TIMEOUT, TIMEOUT)).toBe("timeout");
+  });
+
+  it("waits just below the boundary", () => {
+    expect(nd.scanPollDecision({ scanning: true }, TIMEOUT - 1, TIMEOUT)).toBe("wait");
+  });
+
+  it("done wins over timeout when a settled scan lands past the deadline", () => {
+    expect(nd.scanPollDecision({ scanning: false }, TIMEOUT + 5_000, TIMEOUT)).toBe("done");
+  });
+});

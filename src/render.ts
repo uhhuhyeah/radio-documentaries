@@ -10,7 +10,7 @@
  * (the ordered cue sheet the publish step consumes).
  */
 
-import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import NodeID3 from "node-id3";
@@ -166,6 +166,69 @@ export function reconcileAudioDir(audioDir: string, expected: Iterable<string>):
   return removed;
 }
 
+/**
+ * Minimum byte size for an on-disk segment to be trusted as a complete render.
+ *
+ * A real ElevenLabs MP3 (44.1 kHz audio + ID3 tags) is comfortably larger than
+ * this even for a one-sentence segment; a 0-byte stub or a file truncated when a
+ * crash hit mid-write falls under it and is re-rendered rather than trusted. We
+ * can't verify the audio stream without decoding, so this is the "sane min size"
+ * floor — the cheapest guard that keeps resume from trusting a partial write.
+ */
+export const MIN_SEGMENT_BYTES = 1024;
+
+/**
+ * Pure resume decision: given a plan and the segment files already present on
+ * disk (basename → byte size), return the spoken steps that still need rendering.
+ *
+ * That is every MISSING segment, plus any present-but-truncated one (< the size
+ * floor), while SKIPPING the complete in-plan files a prior partial run wrote —
+ * so an interrupted render resumes instead of re-charging ElevenLabs for work it
+ * already did. A fully-rendered episode yields an empty list (idempotent re-run).
+ * `force` bypasses resume and returns the whole plan for a clean re-render.
+ *
+ * Kept separate from I/O (`presentSegments` reads the dir) so the decision is
+ * unit-testable. This composes with the existing `reconcileAudioDir`: resume
+ * decides what NOT to re-render among in-plan files; reconcile, keyed on the full
+ * plan, removes only the NOT-in-plan orphans and never touches a kept segment.
+ */
+export function segmentsToRender(
+  plan: Plan,
+  present: Map<string, number>,
+  opts: { force?: boolean; minBytes?: number } = {},
+): RenderStep[] {
+  if (opts.force) return plan.steps;
+  const minBytes = opts.minBytes ?? MIN_SEGMENT_BYTES;
+  return plan.steps.filter((s) => {
+    const size = present.get(s.filename);
+    return size === undefined || size < minBytes; // missing or truncated → render
+  });
+}
+
+/**
+ * Read the segment MP3s already on disk into a basename → byte-size map — the
+ * I/O half of the resume decision (`segmentsToRender` consumes it). A missing
+ * dir yields an empty map (nothing to resume from).
+ */
+export function presentSegments(audioDir: string): Map<string, number> {
+  const present = new Map<string, number>();
+  let entries: string[];
+  try {
+    entries = readdirSync(audioDir);
+  } catch {
+    return present; // dir doesn't exist yet — nothing present
+  }
+  for (const name of entries) {
+    if (!name.endsWith(".mp3")) continue;
+    try {
+      present.set(name, statSync(join(audioDir, name)).size);
+    } catch {
+      /* vanished between readdir and stat — treat as absent (render it) */
+    }
+  }
+  return present;
+}
+
 export interface RenderResult {
   audioDir: string;
   cuePath: string;
@@ -173,6 +236,8 @@ export interface RenderResult {
   cue: CueEntry[];
   /** Orphaned segment files removed to reconcile the dir against the plan (full renders only). */
   removed: string[];
+  /** In-plan segments kept from a prior partial render and NOT re-rendered (resume). */
+  skipped: string[];
 }
 
 export interface RenderOptions {
@@ -192,6 +257,8 @@ export interface RenderOptions {
   perEpisodeCap?: number;
   /** With the guard on, proceed on a FAILED balance query (cap-only). Default OFF (fail-closed). */
   allowUnknownBalance?: boolean;
+  /** Force a clean full re-render: ignore complete segments a prior run left. Default OFF (resume ON). */
+  force?: boolean;
 }
 
 export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}): Promise<RenderResult> {
@@ -224,6 +291,21 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
   if (opts.skipSpoken) steps = steps.slice(opts.skipSpoken);
   if (opts.maxSpoken) steps = steps.slice(0, opts.maxSpoken);
   if (opts.onlyLabel) steps = steps.filter((s) => s.label === opts.onlyLabel);
+
+  // Resume: on a NORMAL full render, skip re-rendering (and re-charging ElevenLabs
+  // for) the plan's spoken segments a prior partial run already wrote completely —
+  // rendering only the missing/truncated ones. The explicit selectors above are
+  // manual overrides (a sample, one segment, a hand-picked skip), so resume stays
+  // out of their way; `force` opts back into a clean full re-render.
+  const skipped: string[] = [];
+  const fullRender = !opts.skipSpoken && !opts.maxSpoken && !opts.onlyLabel;
+  if (fullRender && !opts.force) {
+    const present = presentSegments(audioDir);
+    const toRender = segmentsToRender(plan, present);
+    const render = new Set(toRender);
+    for (const s of plan.steps) if (!render.has(s)) skipped.push(s.filename);
+    steps = toRender;
+  }
 
   let prevIndex = -99;
   let prevRequestIds: string[] = [];
@@ -268,5 +350,5 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
     JSON.stringify({ season: plan.season, episode: plan.episode, album: albumTag, audioDir, cue }, null, 2),
   );
 
-  return { audioDir, cuePath, rendered, cue, removed };
+  return { audioDir, cuePath, rendered, cue, removed, skipped };
 }

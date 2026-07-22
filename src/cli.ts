@@ -408,8 +408,12 @@ async function main(): Promise<number> {
         skipCreditGuard: rest.includes("--skip-credit-guard"),
         perEpisodeCap: capArg ? parseInt(capArg, 10) : undefined,
         allowUnknownBalance: rest.includes("--allow-unknown-balance"),
+        // Resume is ON by default: complete segments from a prior partial run are
+        // skipped. --force (a.k.a. --no-resume) forces a clean full re-render.
+        force: rest.includes("--force") || rest.includes("--no-resume"),
       });
       console.log(`rendered ${r.rendered} segment(s) → ${r.audioDir}\ncue → ${r.cuePath}`);
+      if (r.skipped.length) console.log(`resumed: kept ${r.skipped.length} already-rendered segment(s): ${r.skipped.join(", ")}`);
       if (r.removed.length) console.log(`removed ${r.removed.length} orphan(s): ${r.removed.join(", ")}`);
       return 0;
     } catch (e) {

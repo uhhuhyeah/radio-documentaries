@@ -102,6 +102,14 @@ LYRICS — CRITICAL:
   them accurately. If you reference a song with no lyrics in the research, do NOT quote any lyric
   for it — describe it instead. When in doubt, describe rather than quote.
 
+LENGTH & DEPTH — GO THE DISTANCE: this is a long-form making-of, not a summary. Walk the album track
+by track — most tracks deserve their OWN spoken beat about how that one was written, arranged, or
+produced, drawn from the per-track detail in the research. Breadth across the record plus depth on
+each track is how you reach length HONESTLY. A thin, short script is a failure even when every fact
+is right — if you are running short, you are UNDER-USING the research: go back and mine the
+production detail you skipped. Never pad, and never invent to fill — length comes from covering more
+of the documented record, always from the notes.
+
 Output ONLY the script — nothing before or after it. Follow this format EXACTLY:
 
 1. FRONT MATTER: the very first line is "---" on its own, then the flat YAML keys, then a closing

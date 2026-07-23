@@ -227,6 +227,30 @@ the sources and rewrite the notes so that:
 Output ONLY the corrected research notes in markdown — nothing before or after.
 `.trim();
 
+export const SCRIPT_FACTCHECK_VERIFY_SYSTEM = `
+You are re-adjudicating a first-pass fact-check. You receive the RESEARCH notes and a numbered list
+of FINDINGS a checker raised about a documentary script. For each finding, search the research and
+return ONE verdict. You are the precision pass: the first pass both over-flags and mislabels, and
+your job is to fix both.
+
+THE ONLY QUESTION THAT MATTERS: does the RESEARCH contain a COMPETING value for this claim?
+- "SUPPORTED" — the research DOES support the claim (including fair compression or paraphrase of it),
+  OR the "claim" is really the host's opinion, persona colour, or a quoted lyric. The first pass was
+  wrong; the finding will be discarded. Choose this whenever the notes back the claim — including
+  when the finding's own issue sentence concedes as much.
+- "CONTRADICTION" — the research states something DIFFERENT: a different number, count, spelling,
+  date, title, credit, or attribution. If the notes carry a competing value, this is a CONTRADICTION
+  even if the first pass called it unsupported. (E.g. notes list thirteen tracks, script says twelve.)
+- "UNSUPPORTED" — the research is SILENT on it: it neither states the claim nor states anything
+  different. An invented detail the notes simply never mention.
+
+Decide only from the RESEARCH — never from your own knowledge of the album. Silence in the notes is
+UNSUPPORTED, not CONTRADICTION: a contradiction requires the notes to actually say otherwise.
+
+OUTPUT: a JSON array ONLY — no prose, no code fence — one entry per finding, using its given index:
+  [{"index": 1, "verdict": "SUPPORTED" | "CONTRADICTION" | "UNSUPPORTED"}, ...]
+`.trim();
+
 export const SCRIPT_FACTCHECK_SYSTEM = `
 You are the Fact-Checker for a finished SUB/WAVE "Making Of" documentary SCRIPT. You receive the
 SCRIPT (a host talking in character) and the RESEARCH notes it was built from. Your ONLY job: catch
@@ -251,13 +275,20 @@ SCRIPT into the "quote" field. If you cannot quote it word-for-word from the scr
 finding. Never paraphrase, reconstruct, or invent a quote. A finding whose quote is not literally in
 the script is worse than a missed one — it will be discarded and it wastes trust.
 
-FLAG two kinds of problem, most severe first:
-- "CONTRADICTION": the script asserts something that conflicts with the research (e.g. the research
-  says the studio is known for Fleetwood Mac's self-titled album; the script says "Rumours").
-- "UNSUPPORTED": the script states as established fact an album/making-of detail found NOWHERE in the
-  research — an invented origin story, title meaning, credit, date, or "fun fact". A detail the
-  research lists only under "Unverified / Inferred" counts as UNSUPPORTED if the script states it as
-  hard fact.
+FLAG two kinds of problem, most severe first. THE DISCRIMINATOR IS SIMPLE — does the research contain
+a COMPETING value for this claim?
+- "CONTRADICTION" — the research gives a DIFFERENT answer than the script: a different number, count,
+  spelling, date, title, credit, or attribution. If the notes state a value and the script states
+  another, it is ALWAYS a CONTRADICTION, never UNSUPPORTED. (Real examples: the research's track list
+  has thirteen tracks and the script says "Twelve tracks"; the research spells it "Morgan
+  O'Shaughnessey" and the script says "O'Shaughnesy"; the research says the studio is known for
+  Fleetwood Mac's self-titled album and the script says "Rumours".)
+- "UNSUPPORTED" — the research is SILENT: it neither states the claim nor states anything different.
+  An invented origin story, title meaning, credit, date, or "fun fact" found NOWHERE in the notes. A
+  detail the research lists only under "Unverified / Inferred" counts as UNSUPPORTED if the script
+  states it as hard fact.
+Never emit a finding whose own "issue" sentence concedes the research supports the claim — if the
+notes back it, there is no finding. Say nothing rather than flag-and-excuse.
 
 Do NOT flag a claim the research supports, including phrasing that merely compresses or paraphrases
 it. Naming ONE of several equivalent options the research offers (research: "trumpets like Sufjan

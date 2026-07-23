@@ -35,6 +35,8 @@ it from your toolset.**
 
 - **Phase 0 — Supervised (current default).** Your MCP config **omits** `render_episode`,
   `stage_audio`, and `navidrome_create_playlist`. You physically cannot spend credits or publish.
+  (`wait_render` / `render_status` only *read* a render job's status — they spend nothing, so they
+  are not part of the gate; without `render_episode` there is simply no job for them to report.)
   You run the flow up to **`budget_estimate`**, then **stop and hand off to David** (see Escalation).
   A human runs the render → stage → publish tail, or approves it.
 - **Phase 1 — Bounded auto.** Those three tools are present. You may proceed through render/publish
@@ -64,7 +66,7 @@ A trigger looks like: *"Making of \<album> by \<artist>, \<host> to host"* (host
 | 7 | Estimate the credit cost | `budget_estimate` | cap — see below |
 | — | **Phase 0 stops here → hand off to David** | | |
 | 8 | Credit hard-stop (fail-closed) | `credit_check` | **HARD** — Phase 1 |
-| 9 | Render to MP3 segments + cue sheet | `render_episode` | costs credits — Phase 1 |
+| 9 | **Start** the render, then poll until done | `render_episode` → `wait_render` | costs credits — Phase 1 |
 | 10 | Mark recorded | `catalog_set_status(…, "recorded")` | — |
 | 11 | Copy to NAS + trigger rescan, **wait** for it | `stage_audio(rescan, wait)` | — |
 | 12 | Resolve ids, create playlist in cue order | `navidrome_find_album` → `navidrome_album_songs` → `navidrome_create_playlist` | — |
@@ -175,6 +177,30 @@ do not set that flag to force a render past an unknown balance.
 > On a capped key it can read "fine" while the key is actually near its wall. Until the run ledger
 > (T0-2) lands, treat a mid-render quota failure as expected-possible: `render_episode` is
 > resumable — re-run it and it skips already-rendered segments (it does not re-pay for them).
+
+### `render_episode` + `wait_render` — the async render handshake
+A full episode render can run for many minutes — longer than the MCP request timeout — so it is
+**asynchronous**, the same start-then-poll shape as `research_album`/`wait_research`:
+- `render_episode(scriptPath)` **starts** a detached background render and returns immediately with
+  `state: "started"` (or `state: "running"` if one was already going — a re-call is a safe no-op). No
+  audio exists yet when it returns; that's the job's work.
+- Then poll `wait_render(scriptPath)`. It blocks for a bounded window (~240s) and returns one of:
+  - **`done`** — the segments and `rundown.json` are ready; the result carries
+    `rendered` / `audioDir` / `cuePath`. Only now `catalog_set_status(…, "recorded")` and `stage_audio`.
+  - **`running`** — the bounded timeout was hit and the render is **still going**. This is **NOT an
+    error**: just **re-invoke `wait_render`**.
+  - **`error`** — the render failed (including a credit-guard refusal, whose message is preserved), or
+    its process died without finishing. **Halt and escalate** with the returned `message`; do not
+    stage or mark the episode recorded.
+- **Never mark `recorded` or `stage_audio` off a `started` result** — a started render has produced no
+  audio. Wait for `done`.
+- **A failure is resumable.** Re-running `render_episode` skips the segments already on disk (it does
+  not re-pay for them), so one re-run after a genuine mid-render failure is fine; a second failure is
+  a hold, not a third attempt.
+- **Cap total waiting at ~25 min** of polling (roughly six `running` re-invocations). If it still
+  hasn't reached `done` by then, stop and escalate it as a stuck job rather than polling forever.
+  (`render_status(scriptPath)` is an instant, non-blocking read of the same state for your handoff
+  summary.)
 
 ---
 

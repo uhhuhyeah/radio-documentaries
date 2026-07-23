@@ -6,7 +6,15 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ttsBody, ttsUrl, voiceSettings } from "./elevenlabs";
-import { MIN_SEGMENT_BYTES, planEpisode, reconcileAudioDir, sanitizeForTts, segmentsToRender } from "./render";
+import {
+  manifestForPlan,
+  MIN_SEGMENT_BYTES,
+  planEpisode,
+  reconcileAudioDir,
+  sanitizeForTts,
+  segmentTextHash,
+  segmentsToRender,
+} from "./render";
 import * as sm from "./scriptmodel";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
@@ -142,6 +150,24 @@ describe("segmentsToRender (resume decision)", () => {
     const partial = present(Object.fromEntries(files.map((f) => [f, 2048])));
     // With a higher floor, the 2 KB files count as truncated and all re-render.
     expect(segmentsToRender(plan, partial, { minBytes: 4096 }).map((s) => s.filename)).toEqual(files);
+  });
+
+  it("skips complete segments when their manifest hash still matches the sanitized text", () => {
+    const all = present(Object.fromEntries(files.map((f) => [f, big])));
+    expect(segmentsToRender(plan, all, { manifest: manifestForPlan(plan) })).toEqual([]);
+  });
+
+  it("re-renders a complete segment when its manifest hash differs from the current sanitized text", () => {
+    const all = present(Object.fromEntries(files.map((f) => [f, big])));
+    const manifest = manifestForPlan(plan);
+    manifest.segments[files[1]!] = segmentTextHash("old words for this same part filename");
+
+    expect(segmentsToRender(plan, all, { manifest }).map((s) => s.filename)).toEqual([files[1]!]);
+  });
+
+  it("keeps legacy resume behavior when no manifest exists yet", () => {
+    const all = present(Object.fromEntries(files.map((f) => [f, big])));
+    expect(segmentsToRender(plan, all, { manifest: null })).toEqual([]);
   });
 });
 

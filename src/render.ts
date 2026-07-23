@@ -10,7 +10,8 @@
  * (the ordered cue sheet the publish step consumes).
  */
 
-import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import NodeID3 from "node-id3";
@@ -90,6 +91,11 @@ export interface RenderStep {
   filename: string;
   prevText?: string; // set only when the previous slot is an adjacent SPOKEN
   nextText?: string;
+}
+
+export interface RenderManifest {
+  version: 1;
+  segments: Record<string, string>;
 }
 
 export interface Plan {
@@ -177,6 +183,19 @@ export function reconcileAudioDir(audioDir: string, expected: Iterable<string>):
  */
 export const MIN_SEGMENT_BYTES = 1024;
 
+export const RENDER_MANIFEST = "render-manifest.json";
+
+export function segmentTextHash(text: string): string {
+  return createHash("sha256").update(sanitizeForTts(text), "utf-8").digest("hex");
+}
+
+export function manifestForPlan(plan: Plan): RenderManifest {
+  return {
+    version: 1,
+    segments: Object.fromEntries(plan.steps.map((s) => [s.filename, segmentTextHash(s.text)])),
+  };
+}
+
 /**
  * Pure resume decision: given a plan and the segment files already present on
  * disk (basename → byte size), return the spoken steps that still need rendering.
@@ -195,14 +214,30 @@ export const MIN_SEGMENT_BYTES = 1024;
 export function segmentsToRender(
   plan: Plan,
   present: Map<string, number>,
-  opts: { force?: boolean; minBytes?: number } = {},
+  opts: { force?: boolean; minBytes?: number; manifest?: RenderManifest | null } = {},
 ): RenderStep[] {
   if (opts.force) return plan.steps;
   const minBytes = opts.minBytes ?? MIN_SEGMENT_BYTES;
+  const expected = opts.manifest ? manifestForPlan(plan).segments : undefined;
   return plan.steps.filter((s) => {
     const size = present.get(s.filename);
-    return size === undefined || size < minBytes; // missing or truncated → render
+    if (size === undefined || size < minBytes) return true; // missing or truncated → render
+    return expected ? opts.manifest?.segments[s.filename] !== expected[s.filename] : false;
   });
+}
+
+export function readRenderManifest(audioDir: string): RenderManifest | null {
+  try {
+    const raw = JSON.parse(readFileSync(join(audioDir, RENDER_MANIFEST), "utf-8")) as Partial<RenderManifest>;
+    if (raw.version !== 1 || !raw.segments || typeof raw.segments !== "object") return null;
+    return { version: 1, segments: Object.fromEntries(Object.entries(raw.segments).map(([k, v]) => [k, String(v)])) };
+  } catch {
+    return null;
+  }
+}
+
+export function writeRenderManifest(audioDir: string, manifest: RenderManifest): void {
+  writeFileSync(join(audioDir, RENDER_MANIFEST), JSON.stringify(manifest, null, 2) + "\n", "utf-8");
 }
 
 /**
@@ -301,7 +336,7 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
   const fullRender = !opts.skipSpoken && !opts.maxSpoken && !opts.onlyLabel;
   if (fullRender && !opts.force) {
     const present = presentSegments(audioDir);
-    const toRender = segmentsToRender(plan, present);
+    const toRender = segmentsToRender(plan, present, { manifest: readRenderManifest(audioDir) });
     const render = new Set(toRender);
     for (const s of plan.steps) if (!render.has(s)) skipped.push(s.filename);
     steps = toRender;
@@ -330,6 +365,10 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
     prevRequestIds = requestId ? [requestId] : [];
     prevIndex = step.index;
     rendered++;
+  }
+
+  if (!opts.maxSpoken && !opts.onlyLabel) {
+    writeRenderManifest(audioDir, manifestForPlan(plan));
   }
 
   // Reconcile the audio dir against the full plan so a restructured script's old

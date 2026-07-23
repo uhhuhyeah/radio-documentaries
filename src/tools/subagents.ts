@@ -6,11 +6,11 @@
  * Research is the long one (~10 min) — longer than Hermes's 600s per-request MCP
  * timeout — so it runs ASYNC: `research_album` spawns a detached runner and returns
  * immediately; the caller polls `wait_research` until the job settles (see
- * src/research-status.ts). `write_script` is still synchronous.
+ * src/research-status.ts). `write_script` uses the same async job transport.
  */
 
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,7 +18,7 @@ import { Type } from "typebox";
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 
-import { writeScript } from "../agents/writer";
+import { DEFAULT_JOB_INTERVAL_MS, DEFAULT_JOB_TIMEOUT_MS, logPathFor, readJobStatus, waitForJob, writeJobStatus } from "../job-status";
 import {
   DEFAULT_RESEARCH_INTERVAL_MS,
   DEFAULT_RESEARCH_TIMEOUT_MS,
@@ -33,6 +33,9 @@ import { toolResult } from "./util";
 // Repo root: src/tools/subagents.ts → ../.. — the cwd the detached runner is
 // spawned from (so `pnpm exec tsx src/research-runner.ts` resolves).
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/** The job name the write sentinel/log are keyed on: write.status.json / write.log. */
+const WRITE_JOB = "write";
 
 export const researchAlbumTool = defineTool({
   name: "research_album",
@@ -159,10 +162,13 @@ export const writeScriptTool = defineTool({
   name: "write_script",
   label: "Write script",
   description:
-    "Run the Writer sub-agent to turn research notes into a format-compliant script.md. " +
-    "Uses ONLY the notes (no web). Lint the result afterwards. To REVISE after a review, pass " +
+    "Start the Writer sub-agent to turn research notes into a format-compliant script.md. Uses ONLY " +
+    "the notes (no web). Non-blocking: writing can take many minutes, so this spawns a detached " +
+    "background job and returns immediately with state 'started'. Poll wait_write(outPath) until it " +
+    "reports 'done', then lint the result. To REVISE after a review, pass " +
     "revisionNotes (the lint/QA/factcheck fixes to make): the Writer then revises the existing " +
-    "script.md at outPath to address them instead of regenerating — so the rewrite loop converges.",
+    "script.md at outPath to address them instead of regenerating — so the rewrite loop converges. " +
+    "Re-calling while a write is already running is a no-op (returns the running job).",
   parameters: Type.Object({
     researchPath: Type.String(),
     outPath: Type.String({ description: "Where to write script.md" }),
@@ -184,31 +190,103 @@ export const writeScriptTool = defineTool({
     ),
   }),
   execute: async (_id, p) => {
-    const research = readFileSync(p.researchPath, "utf-8");
-    // Revise mode: notes + an existing draft at outPath. If notes are given but no draft exists,
-    // fall through to a fresh write (nothing to revise).
-    const previousDraft =
-      p.revisionNotes && existsSync(p.outPath) ? readFileSync(p.outPath, "utf-8") : undefined;
-    const script = await writeScript({
-      album: p.album,
-      artist: p.artist,
-      host: p.host,
-      hostName: p.hostName,
-      season: p.season,
-      episode: p.episode,
-      model: p.model,
-      targetMinutes: p.targetMinutes,
-      referenceTracks: p.referenceTracks,
-      research,
-      revisionNotes: p.revisionNotes,
-      previousDraft,
-    });
     mkdirSync(dirname(p.outPath), { recursive: true });
-    writeFileSync(p.outPath, script, "utf-8");
-    const mode = previousDraft ? "revised" : "wrote";
-    return toolResult(`${mode} script → ${p.outPath} (${script.length} chars)`, {
+    const existing = readJobStatus(p.outPath, WRITE_JOB);
+    if (existing?.state === "running" && isPidAlive(existing.pid)) {
+      return toolResult(`write already running (pid ${existing.pid}) → ${p.outPath}`, {
+        outPath: p.outPath,
+        state: "running",
+        pid: existing.pid,
+      });
+    }
+
+    const log = openSync(logPathFor(p.outPath, WRITE_JOB), "a");
+    const argsJson = JSON.stringify(p);
+    const child = spawn("pnpm", ["exec", "tsx", "src/write-runner.ts", argsJson], {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: ["ignore", log, log],
+    });
+    child.on("error", (err) => {
+      writeJobStatus(p.outPath, WRITE_JOB, {
+        state: "error",
+        pid: child.pid ?? -1,
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        error: `failed to spawn write runner: ${err.message}`,
+      });
+    });
+    child.unref();
+    closeSync(log);
+
+    const pid = child.pid ?? -1;
+    writeJobStatus(p.outPath, WRITE_JOB, { state: "running", pid, startedAt: new Date().toISOString() });
+
+    return toolResult(`write started (pid ${pid}) → ${p.outPath}; poll wait_write`, {
       outPath: p.outPath,
-      revised: !!previousDraft,
+      state: "started",
+      pid,
+      revised: !!p.revisionNotes,
+    });
+  },
+});
+
+export const waitWriteTool = defineTool({
+  name: "wait_write",
+  label: "Wait for write",
+  description:
+    "Poll a write_script job until it settles or a bounded timeout elapses. Returns state 'done' " +
+    "(script.md ready — proceed to lint_script), 'error' (halt and escalate with message), or " +
+    "'running' (the bounded timeout was hit and the write is STILL going — this is NOT an error: " +
+    "just call wait_write again). A job whose process died without finishing is reported as 'error'. " +
+    "Defaults: timeout 240s, poll every 5s.",
+  parameters: Type.Object({
+    outPath: Type.String({ description: "The write_script outPath whose job to wait on." }),
+    timeoutSec: Type.Optional(
+      Type.Number({ description: "Max seconds to poll before returning 'running' (default 240)." }),
+    ),
+    intervalSec: Type.Optional(Type.Number({ description: "Seconds between status polls (default 5)." })),
+  }),
+  execute: async (_id, p) => {
+    const r = await waitForJob(p.outPath, WRITE_JOB, {
+      timeoutMs: p.timeoutSec !== undefined ? p.timeoutSec * 1000 : DEFAULT_JOB_TIMEOUT_MS,
+      intervalMs: p.intervalSec !== undefined ? p.intervalSec * 1000 : DEFAULT_JOB_INTERVAL_MS,
+    });
+    const done = r.status?.result as { chars?: number; revised?: boolean } | undefined;
+    const summary =
+      r.state === "done"
+        ? `write done: ${done?.revised ? "revised" : "wrote"} script → ${p.outPath} (${done?.chars ?? "?"} chars)`
+        : r.state === "error"
+          ? `write error: ${r.message}`
+          : `write still running (timeout hit; call wait_write again) → ${p.outPath}`;
+    return toolResult(summary, {
+      outPath: p.outPath,
+      state: r.state,
+      message: r.message,
+      result: r.status?.result,
+      status: r.status,
+    });
+  },
+});
+
+export const writeStatusTool = defineTool({
+  name: "write_status",
+  label: "Write status",
+  description:
+    "Instant, non-blocking single read of a write_script job's status sentinel. Returns the current " +
+    "state ('running' | 'done' | 'error', or 'missing' if no write has been started for that outPath). " +
+    "Use wait_write to actually block until it settles.",
+  parameters: Type.Object({
+    outPath: Type.String({ description: "The write_script outPath whose status to read." }),
+  }),
+  execute: async (_id, p) => {
+    const status = readJobStatus(p.outPath, WRITE_JOB);
+    const state = status?.state ?? "missing";
+    return toolResult(`write status: ${state} → ${p.outPath}`, {
+      outPath: p.outPath,
+      state,
+      result: status?.result,
+      status,
     });
   },
 });

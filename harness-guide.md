@@ -399,7 +399,7 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
 1. catalog_assign(...) → get the season/episode + working-dir name.
 2. Create the working directory (write/bash) named exactly as returned.
 3. research_album(...) → wait_research(...) until done.
-4. write_script(...) — runs the Writer against ONLY those notes. It also settles LENGTH.
+4. write_script(...) → wait_write(...) until done. The Writer uses ONLY those notes and settles LENGTH.
 5. lint_script(...) — the script MUST pass (zero errors) before rendering.
 6. factcheck_script(...) — REVISE SPARINGLY: only CONTRADICTIONS get a rewrite.
 7. budget_estimate(...) — do not exceed the cap without approval.
@@ -737,7 +737,7 @@ src/
 │   └── system-prompts.ts    # All system prompts in one versioned file
 ├── tools/                   # Pi tool adapters
 │   ├── index.ts             # Tool registry — every deterministic tool + agent-as-tool adapters
-│   ├── subagents.ts         # Sub-agent tool adapters (research_album, wait_research, write_script)
+│   ├── subagents.ts         # Sub-agent tool adapters (research_album/wait_research, write_script/wait_write)
 │   ├── web.ts               # Web search/fetch tools + pure helpers
 │   ├── lyrics.ts            # LRCLIB lyrics fetch tool + pure helpers
 │   └── util.ts              # result() helper

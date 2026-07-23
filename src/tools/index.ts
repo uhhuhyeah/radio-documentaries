@@ -36,7 +36,14 @@ import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "../preflight";
 import { publishEpisode } from "../publish";
 import * as qa from "../qa";
 import { stageAudio } from "../stage";
-import { researchAlbumTool, researchStatusTool, waitResearchTool, writeScriptTool } from "./subagents";
+import {
+  researchAlbumTool,
+  researchStatusTool,
+  waitResearchTool,
+  waitWriteTool,
+  writeScriptTool,
+  writeStatusTool,
+} from "./subagents";
 import { toolResult as result } from "./util";
 
 // Repo root: src/tools/index.ts → ../.. — the cwd the detached render runner is
@@ -561,6 +568,8 @@ export const documentaryTools = [
   waitResearchTool,
   researchStatusTool,
   writeScriptTool,
+  waitWriteTool,
+  writeStatusTool,
   lintScriptTool,
   factCheckScriptTool,
   qaScriptTool,

@@ -25,11 +25,14 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
    wait_research(notesPath) until it reports state "done" before moving on: while it returns
    "running" that is NOT an error — just call wait_research again. On "error", stop and report.
 3. write_script(researchPath, outPath=<workdir>/script.md, + the episode metadata) — only AFTER
-   wait_research is "done"; runs the Writer against ONLY those notes. It also settles LENGTH (it
+   wait_research is "done"; STARTS the Writer in the background and returns immediately. Then poll
+   wait_write(outPath) until it reports state "done" before linting. While wait_write returns
+   "running" that is NOT an error — just call wait_write again. It also settles LENGTH (it
    regenerates fresh until the runtime clears the house floor), so you never fix runtime by hand.
 4. lint_script(scriptPath) — the script MUST pass (zero errors) before rendering. To fix findings,
    call write_script again with revisionNotes describing the fixes (it REVISES the existing draft to
-   your notes rather than regenerating). Bounded: after ~2 revisions, report the blockers.
+   your notes rather than regenerating). Poll wait_write again before re-running gates. Bounded:
+   after ~2 revisions, report the blockers.
 5. factcheck_script(scriptPath, researchPath) — check the script's album-facts against the notes.
    REVISE SPARINGLY: revise ONLY for CONTRADICTIONS (and QA lyric-"fix" misses). UNSUPPORTED findings
    are ADVISORY — note them in your handoff, do NOT revise for them. The fresh draft is usually the

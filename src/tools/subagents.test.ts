@@ -4,8 +4,16 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { writeJobStatus } from "../job-status";
 import { writeStatus } from "../research-status";
-import { researchAlbumTool, researchStatusTool, waitResearchTool } from "./subagents";
+import {
+  researchAlbumTool,
+  researchStatusTool,
+  waitResearchTool,
+  waitWriteTool,
+  writeScriptTool,
+  writeStatusTool,
+} from "./subagents";
 
 // The execute signature is (toolCallId, params, signal, onUpdate, ctx); the wrappers
 // ignore the trailing three — a loose call keeps the tests focused on behaviour.
@@ -14,10 +22,12 @@ const run = (tool: any, params: any): Promise<any> => tool.execute("test-call", 
 
 let dir: string;
 let notesPath: string;
+let scriptPath: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "research-"));
   notesPath = join(dir, "research.md");
+  scriptPath = join(dir, "script.md");
 });
 
 afterEach(() => {
@@ -66,6 +76,73 @@ describe("research_album tool double-start guard", () => {
     // Our own pid is alive → the guard must short-circuit to the running job.
     writeStatus(notesPath, { state: "running", pid: process.pid, startedAt: "t" });
     const res = await run(researchAlbumTool, { album: "A", artist: "B", notesPath });
+    expect(res.details.state).toBe("running");
+    expect(res.content[0].text).toContain("already running");
+  });
+});
+
+describe("write_status tool", () => {
+  it("reports 'missing' when no write job has been started", async () => {
+    const res = await run(writeStatusTool, { outPath: scriptPath });
+    expect(res.details.state).toBe("missing");
+  });
+
+  it("reflects the current write sentinel state", async () => {
+    writeJobStatus(scriptPath, "write", {
+      state: "done",
+      pid: 123,
+      startedAt: "t",
+      finishedAt: "t2",
+      result: { chars: 42, revised: false },
+    });
+    const res = await run(writeStatusTool, { outPath: scriptPath });
+    expect(res.details.state).toBe("done");
+    expect(res.details.result.chars).toBe(42);
+  });
+});
+
+describe("wait_write tool", () => {
+  it("returns done immediately when the sentinel is already done", async () => {
+    writeJobStatus(scriptPath, "write", {
+      state: "done",
+      pid: 123,
+      startedAt: "t",
+      finishedAt: "t2",
+      result: { chars: 42, revised: false },
+    });
+    const res = await run(waitWriteTool, { outPath: scriptPath, timeoutSec: 1, intervalSec: 1 });
+    expect(res.details.state).toBe("done");
+    expect(res.content[0].text).toContain("write done");
+  });
+
+  it("returns error with the sentinel's message when the write failed", async () => {
+    writeJobStatus(scriptPath, "write", { state: "error", pid: 123, startedAt: "t", error: "model timed out" });
+    const res = await run(waitWriteTool, { outPath: scriptPath, timeoutSec: 1, intervalSec: 1 });
+    expect(res.details.state).toBe("error");
+    expect(res.details.message).toContain("model timed out");
+  });
+
+  it("returns error (stale) when the sentinel says running but the pid is dead", async () => {
+    writeJobStatus(scriptPath, "write", { state: "running", pid: 2_147_483_646, startedAt: "t" });
+    const res = await run(waitWriteTool, { outPath: scriptPath, timeoutSec: 5, intervalSec: 1 });
+    expect(res.details.state).toBe("error");
+    expect(res.details.message).toContain("died without completing");
+  });
+});
+
+describe("write_script tool double-start guard", () => {
+  it("does not spawn a second job when one is already running with a live pid", async () => {
+    writeJobStatus(scriptPath, "write", { state: "running", pid: process.pid, startedAt: "t" });
+    const res = await run(writeScriptTool, {
+      album: "A",
+      artist: "B",
+      researchPath: notesPath,
+      outPath: scriptPath,
+      host: "p_jools",
+      hostName: "Jools",
+      season: 1,
+      episode: 1,
+    });
     expect(res.details.state).toBe("running");
     expect(res.content[0].text).toContain("already running");
   });

@@ -59,7 +59,7 @@ A trigger looks like: *"Making of \<album> by \<artist>, \<host> to host"* (host
 | 0b | Preflight the album is producible | `preflight` | **HARD** — see below |
 | 1 | Reserve the episode → get the absolute `workdir` | `catalog_assign` | — |
 | 2 | **Start** research into `research.md`, then poll until done | `research_album` → `wait_research` | see below |
-| 3 | Write the script from ONLY those notes | `write_script` | — |
+| 3 | **Start** the write from ONLY those notes, then poll until done | `write_script` → `wait_write` | see below |
 | 4 | Lint the format contract | `lint_script` | **HARD** — 0 errors |
 | 5 | Deterministic quality floor | `qa_script` | policy — see below |
 | 6 | Fact-check claims vs the notes | `factcheck_script` | policy — see below |
@@ -115,9 +115,24 @@ start-then-poll shape as `stage_audio(wait)`'s rescan wait, but split across two
   (`research_status(notesPath)` is an instant, non-blocking read of the same state for your handoff
   summary.)
 
+### `write_script` + `wait_write` — the async write handshake
+Writing can run long because fresh writes may retry to settle length. It uses the same start-then-poll
+shape as research and render:
+- `write_script` **starts** a detached background job and returns immediately with `state: "started"`
+  (or `state: "running"` if one was already going — a re-call is a safe no-op). It does **not** write
+  `script.md` before returning; that's the job's work.
+- Then poll `wait_write(outPath)`. It blocks for a bounded window (~240s) and returns one of:
+  - **`done`** — `script.md` is ready; proceed to `lint_script`.
+  - **`running`** — the bounded timeout was hit and the job is **still going**. This is **NOT an
+    error**: just **re-invoke `wait_write`**.
+  - **`error`** — the write failed, or its process died without finishing. **Halt and escalate**
+    with the returned `message`; do not proceed to `lint_script`.
+- Use `write_status(outPath)` for an instant, non-blocking read of the same state in handoffs.
+
 ### `lint_script` — the format contract (HARD)
 - `errors > 0` **blocks rendering.** Re-run `write_script` with `revisionNotes` listing the lint
-  errors, and lint again. If it still fails after **2** rewrites, stop and report the blockers — don't loop.
+  errors, poll `wait_write` to completion, and lint again. If it still fails after **2** rewrites,
+  stop and report the blockers — don't loop.
 - Warnings inform; they don't block.
 
 ### `qa_script` — the deterministic quality floor

@@ -267,11 +267,19 @@ export const budgetEstimateTool = defineTool({
   execute: async (_id, params) => {
     const e = budget.estimateFile(params.scriptPath);
     const cap = params.cap !== undefined ? budget.withinCap(e, params.cap) : null;
+    const capStatus =
+      params.cap === undefined ? "not-requested" : cap === null ? "unknown-model" : cap ? "ok" : "over";
+    const capSummary =
+      params.cap === undefined
+        ? ""
+        : cap === null
+          ? `; cap ${params.cap} → cannot evaluate: model '${e.chosenModel ?? "?"}' has no known credit rate`
+          : `; cap ${params.cap} → ${cap ? "OK" : "OVER"}`;
     const summary =
       `budget: ${e.chars} chars, ~${Math.round(e.spokenMinutes)} min spoken; ` +
-      `${e.chosenModel ?? "?"} ≈ ${Math.round(e.chosenCredits ?? 0)} credits` +
-      (cap === null ? "" : `; cap ${params.cap} → ${cap ? "OK" : "OVER"}`);
-    return result(summary, { ...e, capOk: cap });
+      `${e.chosenModel ?? "?"} ≈ ${e.chosenCredits === undefined ? "unknown" : Math.round(e.chosenCredits)} credits` +
+      capSummary;
+    return result(summary, { ...e, capOk: cap, capStatus });
   },
 });
 

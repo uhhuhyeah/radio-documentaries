@@ -6,7 +6,10 @@
  * Pi's AgentToolResult: a text summary (for the model) plus structured `details`.
  */
 
-import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { closeSync, openSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { Type } from "typebox";
 
@@ -18,14 +21,29 @@ import { config } from "../config";
 import { checkCredit } from "../credit";
 import { apiKeyFromEnv } from "../elevenlabs";
 import { factCheckFiles } from "../factcheck";
+import {
+  DEFAULT_JOB_INTERVAL_MS,
+  DEFAULT_JOB_TIMEOUT_MS,
+  isPidAlive,
+  logPathFor,
+  readJobStatus,
+  waitForJob,
+  writeJobStatus,
+} from "../job-status";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum, waitForScan } from "../navidrome";
 import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "../preflight";
 import * as qa from "../qa";
-import { renderEpisode } from "../render";
 import { stageAudio } from "../stage";
 import { researchAlbumTool, researchStatusTool, waitResearchTool, writeScriptTool } from "./subagents";
 import { toolResult as result } from "./util";
+
+// Repo root: src/tools/index.ts → ../.. — the cwd the detached render runner is
+// spawned from (so `pnpm exec tsx src/render-runner.ts` resolves).
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/** The job name the render sentinel/log are keyed on: render.status.json / render.log. */
+const RENDER_JOB = "render";
 
 // --- preflight (network; the make-ability gate) ------------------------------
 
@@ -277,17 +295,141 @@ export const creditCheckTool = defineTool({
 });
 
 // --- render (network; needs the ElevenLabs key) ------------------------------
+//
+// A full episode render can outlast Hermes's 600s per-request MCP timeout, so it
+// runs ASYNC exactly like research: `render_episode` spawns a detached runner
+// (src/render-runner.ts) and returns immediately; the caller polls `wait_render`
+// until the job settles (see src/job-status.ts). The sentinel and log live next to
+// the script: `<workdir>/render.status.json` and `<workdir>/render.log`.
 
 export const renderEpisodeTool = defineTool({
   name: "render_episode",
   label: "Render episode",
   description:
-    "Render a script.md to ID3-tagged MP3 segments via ElevenLabs and write the rundown cue sheet. " +
-    "Costs credits — only call when approved. Needs ELEVENLABS_API_KEY.",
-  parameters: Type.Object({ scriptPath: Type.String() }),
+    "Start rendering a script.md to ID3-tagged MP3 segments via ElevenLabs and write the rundown cue " +
+    "sheet. Costs credits — only call when approved. Needs ELEVENLABS_API_KEY. Non-blocking: a full " +
+    "episode render can take many minutes, so this spawns a detached background job and returns " +
+    "immediately with state 'started'. Poll wait_render(scriptPath) until it reports 'done' before " +
+    "catalog_set_status(..., 'recorded') and stage_audio; on 'error', stop and report. Re-calling while " +
+    "a job is already running is a no-op (returns the running job); a re-run after a failure RESUMES " +
+    "(already-rendered segments are not re-charged).",
+  parameters: Type.Object({
+    scriptPath: Type.String(),
+    force: Type.Optional(
+      Type.Boolean({ description: "Clean full re-render: ignore complete segments a prior run left (default false — resume)." }),
+    ),
+  }),
   execute: async (_id, params) => {
-    const r = await renderEpisode(params.scriptPath);
-    return result(`rendered ${r.rendered} segment(s) → ${r.audioDir}; cue → ${r.cuePath}`, r);
+    // Guard against a double-start: if a job is already running with a live pid,
+    // return it rather than spawning a second render over the same audio dir.
+    const existing = readJobStatus(params.scriptPath, RENDER_JOB);
+    if (existing?.state === "running" && isPidAlive(existing.pid)) {
+      return result(`render already running (pid ${existing.pid}) → ${params.scriptPath}`, {
+        scriptPath: params.scriptPath,
+        state: "running",
+        pid: existing.pid,
+      });
+    }
+
+    // Spawn the runner detached so it survives this tool call returning. Its
+    // stdout+stderr go to <dir>/render.log — stdio:"ignore" would lose them, so we
+    // wire the log fd instead.
+    const log = openSync(logPathFor(params.scriptPath, RENDER_JOB), "a");
+    const argsJson = JSON.stringify({ scriptPath: params.scriptPath, force: params.force });
+    const child = spawn("pnpm", ["exec", "tsx", "src/render-runner.ts", argsJson], {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: ["ignore", log, log],
+    });
+    // A failed spawn (ENOENT/EAGAIN) emits 'error' asynchronously; an unhandled
+    // 'error' event would throw and crash the long-lived MCP server. Catch it and
+    // record a terminal error sentinel so wait_render reports it instead.
+    child.on("error", (err) => {
+      writeJobStatus(params.scriptPath, RENDER_JOB, {
+        state: "error",
+        pid: child.pid ?? -1,
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        error: `failed to spawn render runner: ${err.message}`,
+      });
+    });
+    child.unref();
+    closeSync(log); // the child dup'd its own fd; don't leak the parent's copy per call.
+
+    // Write the sentinel in the PARENT before returning so an immediate wait_render
+    // never races a missing file (the runner re-asserts it too).
+    const pid = child.pid ?? -1;
+    writeJobStatus(params.scriptPath, RENDER_JOB, {
+      state: "running",
+      pid,
+      startedAt: new Date().toISOString(),
+    });
+
+    return result(`render started (pid ${pid}) → ${params.scriptPath}; poll wait_render`, {
+      scriptPath: params.scriptPath,
+      state: "started",
+      pid,
+    });
+  },
+});
+
+export const waitRenderTool = defineTool({
+  name: "wait_render",
+  label: "Wait for render",
+  description:
+    "Poll a render_episode job until it settles or a bounded timeout elapses. Returns state 'done' " +
+    "(audio + cue sheet ready — the result carries rendered/audioDir/cuePath), 'error' (halt and " +
+    "escalate with message), or 'running' (the bounded timeout was hit and the render is STILL going — " +
+    "this is NOT an error: just call wait_render again). A job whose process died without finishing is " +
+    "reported as 'error'; re-running render_episode then RESUMES. Defaults: timeout 240s, poll every 5s.",
+  parameters: Type.Object({
+    scriptPath: Type.String({ description: "The render_episode scriptPath whose job to wait on." }),
+    timeoutSec: Type.Optional(
+      Type.Number({ description: "Max seconds to poll before returning 'running' (default 240)." }),
+    ),
+    intervalSec: Type.Optional(Type.Number({ description: "Seconds between status polls (default 5)." })),
+  }),
+  execute: async (_id, params) => {
+    const r = await waitForJob(params.scriptPath, RENDER_JOB, {
+      timeoutMs: params.timeoutSec !== undefined ? params.timeoutSec * 1000 : DEFAULT_JOB_TIMEOUT_MS,
+      intervalMs: params.intervalSec !== undefined ? params.intervalSec * 1000 : DEFAULT_JOB_INTERVAL_MS,
+    });
+    const done = r.status?.result as { rendered?: number; audioDir?: string; cuePath?: string } | undefined;
+    const summary =
+      r.state === "done"
+        ? `render done: ${done?.rendered ?? "?"} segment(s) → ${done?.audioDir ?? "?"}; cue → ${done?.cuePath ?? "?"}`
+        : r.state === "error"
+          ? `render error: ${r.message}`
+          : `render still running (timeout hit; call wait_render again) → ${params.scriptPath}`;
+    return result(summary, {
+      scriptPath: params.scriptPath,
+      state: r.state,
+      message: r.message,
+      result: r.status?.result,
+      status: r.status,
+    });
+  },
+});
+
+export const renderStatusTool = defineTool({
+  name: "render_status",
+  label: "Render status",
+  description:
+    "Instant, non-blocking single read of a render_episode job's status sentinel. Returns the current " +
+    "state ('running' | 'done' | 'error', or 'missing' if no render has been started for that " +
+    "scriptPath). Use wait_render to actually block until it settles.",
+  parameters: Type.Object({
+    scriptPath: Type.String({ description: "The render_episode scriptPath whose status to read." }),
+  }),
+  execute: async (_id, params) => {
+    const status = readJobStatus(params.scriptPath, RENDER_JOB);
+    const state = status?.state ?? "missing";
+    return result(`render status: ${state} → ${params.scriptPath}`, {
+      scriptPath: params.scriptPath,
+      state,
+      result: status?.result,
+      status,
+    });
   },
 });
 
@@ -403,6 +545,8 @@ export const documentaryTools = [
   budgetEstimateTool,
   creditCheckTool,
   renderEpisodeTool,
+  waitRenderTool,
+  renderStatusTool,
   stageAudioTool,
   navidromeFindAlbumTool,
   navidromeAlbumSongsTool,

@@ -38,9 +38,12 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
    and QA has no lyric-"fix" misses, PROCEED to budget WITHOUT revising.
 6. budget_estimate(scriptPath, cap) — surface the credit cost; do not exceed the cap without
    explicit approval.
-7. When rendering is approved, render_episode(scriptPath) produces the ID3-tagged MP3 segments
-   and the rundown cue sheet (it costs credits — get approval first), then
-   catalog_set_status(..., "recorded").
+7. When rendering is approved, render_episode(scriptPath) STARTS the ElevenLabs render in the
+   background and returns immediately (it costs credits — get approval first). Then poll
+   wait_render(scriptPath) until it reports state "done" — while it returns "running" that is NOT
+   an error, just call wait_render again. Only after "done" call catalog_set_status(..., "recorded")
+   and move on to staging. On "error", stop and report (re-running render_episode RESUMES: it does
+   not re-charge for segments already rendered).
 8. stage_audio(workdir, rescan=true) copies the MP3s onto the NAS and triggers a Navidrome rescan
    (use replace=true when re-publishing an episode, to remove stale files).
 9. When prompted to publish (after stage_audio + rescan): navidrome_find_album /

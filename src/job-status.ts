@@ -19,7 +19,7 @@
  * thin read/write/loop helpers touch I/O.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 // wait_* defaults: these jobs run for many minutes, so a single wait call polls for
@@ -115,16 +115,23 @@ export function jobPollDecision(
 
 // --- thin I/O ----------------------------------------------------------------
 
-/** Read + parse a job's sentinel; `null` if it doesn't exist yet. Throws only on malformed JSON. */
+/** Read + parse a job's sentinel; `null` if missing or transiently malformed. */
 export function readJobStatus(anchorPath: string, job: string): JobStatus | null {
   const p = statusPathFor(anchorPath, job);
   if (!existsSync(p)) return null;
-  return parseStatus(readFileSync(p, "utf-8"), job);
+  try {
+    return parseStatus(readFileSync(p, "utf-8"), job);
+  } catch {
+    return null;
+  }
 }
 
-/** Write a job's sentinel next to its anchor (atomic enough for a single-writer runner). */
+/** Write a job's sentinel next to its anchor via same-filesystem temp file + atomic rename. */
 export function writeJobStatus(anchorPath: string, job: string, status: JobStatus): void {
-  writeFileSync(statusPathFor(anchorPath, job), serializeStatus(status), "utf-8");
+  const p = statusPathFor(anchorPath, job);
+  const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, serializeStatus(status), "utf-8");
+  renameSync(tmp, p);
 }
 
 /** Is `pid` a live process? `process.kill(pid, 0)` probes without signalling. Thin I/O. */

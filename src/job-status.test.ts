@@ -1,3 +1,7 @@
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,8 +9,11 @@ import {
   jobPollDecision,
   logPathFor,
   parseStatus,
+  readJobStatus,
   serializeStatus,
   statusPathFor,
+  waitForJob,
+  writeJobStatus,
 } from "./job-status";
 
 describe("statusPathFor / logPathFor", () => {
@@ -124,5 +131,49 @@ describe("jobPollDecision", () => {
   it("reports running when the sentinel is still missing at the deadline", () => {
     // No sentinel yet is not a death sentence — the caller re-polls.
     expect(jobPollDecision(null, false, TIMEOUT, TIMEOUT)).toBe("running");
+  });
+});
+
+describe("readJobStatus / writeJobStatus", () => {
+  it("writes the sentinel and leaves no temp file behind", () => {
+    const dir = mkdtempSync(join(tmpdir(), "job-status-"));
+    try {
+      const anchor = join(dir, "script.md");
+      const status: JobStatus = { state: "running", pid: 123, startedAt: "t" };
+
+      writeJobStatus(anchor, "render", status);
+
+      expect(readJobStatus(anchor, "render")).toEqual(status);
+      expect(readdirSync(dir).filter((name) => name.includes(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns null for a transiently malformed sentinel instead of throwing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "job-status-"));
+    try {
+      const anchor = join(dir, "script.md");
+      writeFileSync(statusPathFor(anchor, "render"), '{"state":"running"', "utf-8");
+
+      expect(readJobStatus(anchor, "render")).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("waitForJob treats a malformed sentinel as still pending", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "job-status-"));
+    try {
+      const anchor = join(dir, "script.md");
+      writeFileSync(statusPathFor(anchor, "render"), '{"state":"running"', "utf-8");
+
+      await expect(waitForJob(anchor, "render", { timeoutMs: 0, intervalMs: 1 })).resolves.toMatchObject({
+        state: "running",
+        status: null,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

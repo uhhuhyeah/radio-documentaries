@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import * as fc from "./factcheck";
 import { dropUnquotedFindings, normalizeForMatch, parseFindings, type ScriptFinding } from "./factcheck";
 
 describe("parseFindings", () => {
@@ -109,5 +110,61 @@ describe("dropUnquotedFindings", () => {
 
   it("drops a finding with an empty quote", () => {
     expect(dropUnquotedFindings([finding("")], script)).toEqual([]);
+  });
+});
+
+describe("parseVerdicts", () => {
+  it("parses a clean verdict array into a 1-based map", () => {
+    const m = fc.parseVerdicts('[{"index":1,"verdict":"SUPPORTED"},{"index":2,"verdict":"CONTRADICTION"}]');
+    expect(m.get(1)).toBe("SUPPORTED");
+    expect(m.get(2)).toBe("CONTRADICTION");
+  });
+
+  it("tolerates prose around the array and skips malformed entries", () => {
+    const m = fc.parseVerdicts('Here you go:\n[{"index":1,"verdict":"NOPE"},{"index":2,"verdict":"UNSUPPORTED"}]\nDone.');
+    expect(m.has(1)).toBe(false); // bad verdict value dropped
+    expect(m.get(2)).toBe("UNSUPPORTED");
+  });
+
+  it("returns an empty map on non-JSON", () => {
+    expect(fc.parseVerdicts("no array here").size).toBe(0);
+  });
+});
+
+describe("applyVerdicts", () => {
+  const f = (severity: fc.Severity, quote: string): fc.ScriptFinding => ({
+    severity,
+    quote,
+    issue: "x",
+    category: "other",
+  });
+
+  it("UPGRADES a misfiled contradiction out of the advisory bucket", () => {
+    // The real failure: notes list thirteen tracks, script says twelve — filed UNSUPPORTED.
+    const out = fc.applyVerdicts([f("UNSUPPORTED", "Twelve tracks")], new Map([[1, "CONTRADICTION" as fc.Verdict]]));
+    expect(out).toHaveLength(1);
+    expect(out[0]!.severity).toBe("CONTRADICTION");
+    expect(out[0]!.quote).toBe("Twelve tracks"); // everything else preserved
+  });
+
+  it("DROPS a finding the research actually supports", () => {
+    const out = fc.applyVerdicts([f("UNSUPPORTED", "backing vocals")], new Map([[1, "SUPPORTED" as fc.Verdict]]));
+    expect(out).toEqual([]);
+  });
+
+  it("keeps a finding with NO verdict unchanged (partial verification must not lose data)", () => {
+    const findings = [f("CONTRADICTION", "a"), f("UNSUPPORTED", "b")];
+    const out = fc.applyVerdicts(findings, new Map([[1, "CONTRADICTION" as fc.Verdict]]));
+    expect(out).toHaveLength(2);
+    expect(out.find((x) => x.quote === "b")!.severity).toBe("UNSUPPORTED");
+  });
+
+  it("sorts contradictions first after re-labelling", () => {
+    const out = fc.applyVerdicts(
+      [f("UNSUPPORTED", "advisory"), f("UNSUPPORTED", "real")],
+      new Map([[2, "CONTRADICTION" as fc.Verdict]]),
+    );
+    expect(out[0]!.quote).toBe("real");
+    expect(out[0]!.severity).toBe("CONTRADICTION");
   });
 });

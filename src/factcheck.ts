@@ -14,7 +14,7 @@
 
 import { readFileSync } from "node:fs";
 
-import { SCRIPT_FACTCHECK_SYSTEM } from "./agents/system-prompts";
+import { SCRIPT_FACTCHECK_SYSTEM, SCRIPT_FACTCHECK_VERIFY_SYSTEM } from "./agents/system-prompts";
 import { config } from "./config";
 import { complete } from "./llm";
 import * as sm from "./scriptmodel";
@@ -105,6 +105,94 @@ export function parseFindings(reply: string): ScriptFinding[] {
   return out.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "CONTRADICTION" ? -1 : 1));
 }
 
+/** A verification verdict on a first-pass finding. "SUPPORTED" means discard it. */
+export type Verdict = "SUPPORTED" | "CONTRADICTION" | "UNSUPPORTED";
+
+const VERDICTS: readonly Verdict[] = ["SUPPORTED", "CONTRADICTION", "UNSUPPORTED"];
+
+/**
+ * Parse the verification pass's `[{index, verdict}]` array into a 1-based index → verdict map.
+ * Tolerant like `parseFindings` (models wrap JSON in prose); anything malformed is simply absent
+ * from the map, which the caller treats as "leave this finding alone". Pure.
+ */
+export function parseVerdicts(reply: string): Map<number, Verdict> {
+  const out = new Map<number, Verdict>();
+  const start = reply.indexOf("[");
+  const end = reply.lastIndexOf("]");
+  if (start === -1 || end === -1 || end < start) return out;
+  let arr: unknown;
+  try {
+    arr = JSON.parse(reply.slice(start, end + 1));
+  } catch {
+    return out;
+  }
+  if (!Array.isArray(arr)) return out;
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const index = typeof o.index === "number" ? o.index : Number(o.index);
+    const verdict = VERDICTS.includes(o.verdict as Verdict) ? (o.verdict as Verdict) : null;
+    if (Number.isInteger(index) && verdict) out.set(index, verdict);
+  }
+  return out;
+}
+
+/**
+ * Apply verification verdicts to the first-pass findings: drop the ones the research actually
+ * supports, and re-label severity for the rest — this is what upgrades a misfiled contradiction
+ * (the notes carry a competing value) out of the advisory bucket. A finding with no verdict is
+ * kept UNCHANGED: a partial or unparseable verification must never silently discard findings. Pure.
+ */
+export function applyVerdicts(findings: ScriptFinding[], verdicts: Map<number, Verdict>): ScriptFinding[] {
+  const out: ScriptFinding[] = [];
+  findings.forEach((f, i) => {
+    const verdict = verdicts.get(i + 1); // findings are presented to the model 1-based
+    if (!verdict) {
+      out.push(f); // no verdict → leave it exactly as the first pass had it
+      return;
+    }
+    if (verdict === "SUPPORTED") return; // the research backs it — not a finding at all
+    out.push(verdict === f.severity ? f : { ...f, severity: verdict });
+  });
+  return out.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "CONTRADICTION" ? -1 : 1));
+}
+
+/**
+ * Second-pass precision check over the first pass's findings. The first pass both over-flags
+ * (emitting findings whose own issue concedes the research supports the claim) and MISLABELS —
+ * a flat contradiction (notes say thirteen tracks, script says twelve) filed as UNSUPPORTED lands
+ * in the "advisory, don't revise" bucket and would ship unattended. This re-adjudicates each
+ * finding on the one question that separates them: does the research carry a competing value?
+ *
+ * Fail-safe: any error, or a reply that yields no verdicts, returns the findings untouched.
+ */
+export async function verifyFindings(
+  findings: ScriptFinding[],
+  researchText: string,
+  model: string = config.models.verify,
+): Promise<ScriptFinding[]> {
+  if (findings.length === 0) return findings;
+  const list = findings
+    .map((f, i) => `${i + 1}. [${f.severity}] quote: ${JSON.stringify(f.quote)}\n   issue: ${f.issue}`)
+    .join("\n");
+  const user = [
+    "Return ONLY the JSON verdict array — one entry per finding, using its number as `index`.",
+    "",
+    "--- RESEARCH ---",
+    researchText,
+    "",
+    "--- FINDINGS ---",
+    list,
+  ].join("\n");
+  try {
+    const verdicts = parseVerdicts(await complete(SCRIPT_FACTCHECK_VERIFY_SYSTEM, user, model));
+    if (verdicts.size === 0) return findings; // unparseable → keep the first pass verbatim
+    return applyVerdicts(findings, verdicts);
+  } catch {
+    return findings; // the verification is a precision improvement, never a source of data loss
+  }
+}
+
 /** Fact-check a script's spoken text against research notes. Returns findings (advisory). */
 export async function factCheckScript(
   scriptText: string,
@@ -130,7 +218,10 @@ export async function factCheckScript(
 
   const findings = parseFindings(await complete(SCRIPT_FACTCHECK_SYSTEM, user, model));
   // Deterministic guard: drop any finding whose quote isn't actually in the spoken script.
-  return dropUnquotedFindings(findings, spoken);
+  const quoted = dropUnquotedFindings(findings, spoken);
+  // Precision pass: drop what the research actually supports and re-label misfiled severities,
+  // so a real contradiction can't sit in the advisory bucket. Fail-safe — returns `quoted` on error.
+  return verifyFindings(quoted, researchText, model);
 }
 
 /** File wrapper for the CLI / Producer tool. */

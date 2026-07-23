@@ -199,8 +199,10 @@ export const factCheckScriptTool = defineTool({
   label: "Fact-check script",
   description:
     "Check a script.md's album/making-of claims against the research notes. Flags CONTRADICTION and " +
-    "UNSUPPORTED (invented) facts; ignores the host's persona colour, opinion, and lyrics. Advisory — " +
-    "surfaces findings for review, does not block like lint.",
+    "UNSUPPORTED (invented) facts; ignores the host's persona colour, opinion, and lyrics. Findings are " +
+    "re-adjudicated by a verification pass that drops what the research actually supports and upgrades " +
+    "a misfiled contradiction, so the severity can be trusted. Advisory — surfaces findings for " +
+    "review, does not block like lint.",
   parameters: Type.Object({ scriptPath: Type.String(), researchPath: Type.String() }),
   execute: async (_id, params) => {
     const findings = await factCheckFiles(params.scriptPath, params.researchPath);

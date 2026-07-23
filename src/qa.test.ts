@@ -176,17 +176,18 @@ describe("reference-track spread", () => {
   });
 });
 
-describe("length floor grace", () => {
+describe("length house range (15–40 min)", () => {
   const wordsPart = (n: number): string => Array(n).fill("word").join(" ");
 
-  it("does not flag a ~19.7-min script (5% floor grace: 19+ clears)", () => {
-    // ~2955 spoken words / 150 wpm ≈ 19.7 min — just under the 20 floor, within grace.
-    const f = qa.qaText(script(INTRO_OK, wordsPart(2950)), RESEARCH);
+  it("does not flag a ~16-min script (inside the wide house range)", () => {
+    // ~2400 words / 150 wpm ≈ 16 min — below the 25 target but well inside 15–40.
+    const f = qa.qaText(script(INTRO_OK, wordsPart(2400)), RESEARCH);
     expect(has(f, "WARN", "runtime")).toBe(false);
   });
 
-  it("still flags a clearly-short ~16-min script", () => {
-    const f = qa.qaText(script(INTRO_OK, wordsPart(2400)), RESEARCH);
+  it("flags a script below the 15-min floor", () => {
+    // ~2000 words / 150 wpm ≈ 13.4 min — under the floor.
+    const f = qa.qaText(script(INTRO_OK, wordsPart(2000)), RESEARCH);
     expect(has(f, "WARN", "runtime")).toBe(true);
   });
 });

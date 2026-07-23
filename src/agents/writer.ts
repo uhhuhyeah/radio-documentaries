@@ -13,10 +13,10 @@ import { WRITER_SYSTEM } from "./system-prompts";
 // Length is settled HERE, at generation — never via a revision (deepening a draft pads and invents;
 // we watched factcheck go 2→14 that way). A fresh write that lands short is regenerated fresh (the
 // track-by-track length is variable run to run); a revision is a single pass that preserves length.
-// Fresh writes aim ABOVE the qa house floor (20) so the small trim a factual revision causes doesn't
-// dip the final script back under it — revisions can't re-lengthen (that pads and invents), so the
-// headroom has to come from generation.
-const FRESH_TARGET_MINUTES = 22;
+// Fresh writes aim for the ~20-min target; a short draft is regenerated fresh (never lengthened via
+// a revision — that pads and invents). The qa house floor (15) sits well below this, so the margin
+// absorbs the small trim a factual revision causes.
+const FRESH_TARGET_MINUTES = 20;
 const MAX_FRESH_ATTEMPTS = 3; // 1 + up to 2 fresh regenerations to reach the target
 
 function personaBlock(hostId: string, hostName: string): string {
@@ -151,7 +151,7 @@ export function buildWriterMessage(input: WriterInput): string {
       `from these so you can quote accurately, and quote each song ONLY its own lyrics (never ` +
       `attribute one song's words to another). For any other song, describe it — do NOT quote lyrics.`
     : `No track lyrics are in the research — do NOT quote any song lyrics; describe the songs instead.`;
-  const targetMinutes = input.targetMinutes ?? 25;
+  const targetMinutes = input.targetMinutes ?? 20;
   const head = [
     `Episode metadata (use these exact values in the front matter):`,
     `  season: ${input.season}`,
@@ -200,7 +200,7 @@ export function buildWriterMessage(input: WriterInput): string {
         `STRUCTURE IT AS A TRACK-BY-TRACK MAKING-OF WALK: give most of the album's tracks their own spoken`,
         `beat digging into how THAT track was written, arranged, or produced. The research documents each`,
         `track, so there is real craft for every one — do not compress the album into a few broad parts.`,
-        `Write AT LEAST 12 SPOKEN parts of ~250–400 words each (~3,800+ spoken words total, songs aside).`,
+        `Write AT LEAST 12 SPOKEN parts of ~250 words each (~3,000+ spoken words total, songs aside).`,
         `If you land shorter, you've left documented craft unused — go back to the notes and mine the`,
         `per-track detail you skipped. Never pad and never invent to reach length: the length comes from`,
         `covering more of the record in more depth, always from the notes.`,

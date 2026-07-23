@@ -21,6 +21,7 @@ import { factCheckFiles } from "../factcheck";
 import * as lint from "../lint";
 import { clientFromEnv, songsOfAlbum, waitForScan } from "../navidrome";
 import { DEFAULT_LYRICS_THRESHOLD, runPreflight } from "../preflight";
+import { publishEpisode } from "../publish";
 import * as qa from "../qa";
 import { renderEpisode } from "../render";
 import { stageAudio } from "../stage";
@@ -362,6 +363,25 @@ export const navidromeCreatePlaylistTool = defineTool({
   },
 });
 
+export const publishEpisodeTool = defineTool({
+  name: "publish_episode",
+  label: "Publish episode playlist",
+  description:
+    "Build the Navidrome playlist for a rendered episode from its rundown.json (the cue sheet render " +
+    "wrote). Resolves the staged episode audio AND the reference tracks and orders the playlist exactly " +
+    "as the cue does — use this rather than assembling ids by hand. Run AFTER stage_audio with " +
+    "rescan+wait: publishing against a half-scanned library fails with 'episode album not found'. " +
+    "Idempotent — re-running replaces the same-named playlist.",
+  parameters: Type.Object({
+    rundownPath: Type.String({ description: "The episode's rundown.json, e.g. <workdir>/rundown.json" }),
+    name: Type.Optional(Type.String({ description: "Playlist name; defaults to 'SUB/WAVE Docs · <album>'." })),
+  }),
+  execute: async (_id, params) => {
+    const r = await publishEpisode(params.rundownPath, params.name);
+    return result(`published: playlist "${r.playlistName}" with ${r.count} track(s)`, r);
+  },
+});
+
 export const stageAudioTool = defineTool({
   name: "stage_audio",
   label: "Stage audio to NAS",
@@ -409,4 +429,5 @@ export const documentaryTools = [
   navidromeScanStatusTool,
   waitScanTool,
   navidromeCreatePlaylistTool,
+  publishEpisodeTool,
 ];

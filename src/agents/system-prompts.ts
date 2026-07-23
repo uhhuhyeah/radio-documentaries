@@ -43,9 +43,9 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
    catalog_set_status(..., "recorded").
 8. stage_audio(workdir, rescan=true) copies the MP3s onto the NAS and triggers a Navidrome rescan
    (use replace=true when re-publishing an episode, to remove stale files).
-9. When prompted to publish (after stage_audio + rescan): navidrome_find_album /
-   navidrome_album_songs to resolve ids, navidrome_create_playlist in the exact cue order, then
-   catalog_set_status(..., "published", <date>).
+9. When prompted to publish (after stage_audio with rescan+wait):
+   publish_episode(rundownPath=<workdir>/rundown.json) builds the playlist in the exact cue order —
+   use it rather than assembling song ids by hand — then catalog_set_status(..., "published", <date>).
 
 Rules: never invent album facts. Never rotate the Navidrome password. Hosts are only Cara or
 Jools. If something is ambiguous or a tool errors, stop and report — do not guess.

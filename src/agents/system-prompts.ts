@@ -31,10 +31,11 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
    call write_script again with revisionNotes describing the fixes (it REVISES the existing draft to
    your notes rather than regenerating). Bounded: after ~2 revisions, report the blockers.
 5. factcheck_script(scriptPath, researchPath) — check the script's album-facts against the notes.
-   Advisory, not a hard gate: report any CONTRADICTION/UNSUPPORTED findings. If a CONTRADICTION or a
-   clearly-wrong invented fact turns up, re-run write_script with revisionNotes naming the exact
-   claim to fix or cut before rendering; ignore findings that are really the host's persona colour or
-   opinion. (QA lyric-fidelity misses go the same way — revisionNotes to quote the lyric verbatim.)
+   REVISE SPARINGLY: revise ONLY for CONTRADICTIONS (and QA lyric-"fix" misses). UNSUPPORTED findings
+   are ADVISORY — note them in your handoff, do NOT revise for them. The fresh draft is usually the
+   cleanest state; revising a near-clean draft for advisory findings churns the text and makes
+   fact-check WORSE (a supervised run went 3→9 findings that way). If factcheck has 0 contradictions
+   and QA has no lyric-"fix" misses, PROCEED to budget WITHOUT revising.
 6. budget_estimate(scriptPath, cap) — surface the credit cost; do not exceed the cap without
    explicit approval.
 7. When rendering is approved, render_episode(scriptPath) produces the ID3-tagged MP3 segments

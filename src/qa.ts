@@ -21,12 +21,11 @@ export { type Finding, type Level };
 // 20–30 min as ~3,500–4,500 spoken words, and budget.ts bills spoken minutes only),
 // so this check measures spoken time and ignores SONG slots (real library tracks).
 const LENGTH_TOLERANCE = 0.2; // ±20% of target_minutes
-const HOUSE_MIN_MINUTES = 20;
-const HOUSE_MAX_MINUTES = 30;
-// A ~19.8-min episode is a 20-min episode; the floor shouldn't be a hard cliff that holds an
-// otherwise-clean script (and the runtime warning it fires is what tempts a length-adding rewrite,
-// which pads and invents). Grace the floor 5%: 19+ min clears.
-const HOUSE_FLOOR_GRACE = 0.05;
+// House range aligned to what the Writer honestly produces (aim ~20 min). A generous floor/ceiling
+// so an otherwise-clean script is never held over length — a too-tight floor only tempts a
+// length-adding rewrite, which pads and invents.
+const HOUSE_MIN_MINUTES = 15;
+const HOUSE_MAX_MINUTES = 40;
 
 // A quoted span this long (in words) is treated as a lyric rather than dialogue.
 const LYRIC_MIN_WORDS = 5;
@@ -166,8 +165,7 @@ export function qaText(scriptText: string, researchText: string): Finding[] {
   //    house range describe — SONG slots are library tracks, not spoken time) and
   //    flag only when it's both off `target_minutes` and outside the house range.
   const spokenMin = spoken.reduce((n, s) => n + wordCount(s.body), 0) / WORDS_PER_MINUTE;
-  const floor = HOUSE_MIN_MINUTES * (1 - HOUSE_FLOOR_GRACE); // 19.0 — don't hold over rounding
-  const inHouse = spokenMin >= floor && spokenMin <= HOUSE_MAX_MINUTES;
+  const inHouse = spokenMin >= HOUSE_MIN_MINUTES && spokenMin <= HOUSE_MAX_MINUTES;
   const target = fm.target_minutes;
   if (typeof target === "number") {
     const offTarget = spokenMin < target * (1 - LENGTH_TOLERANCE) || spokenMin > target * (1 + LENGTH_TOLERANCE);

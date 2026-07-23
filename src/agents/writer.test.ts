@@ -23,7 +23,7 @@ const BASE: WriterInput = {
 describe("buildWriterMessage", () => {
   it("fresh mode: full-write instruction, the research, and no revision block", () => {
     const msg = buildWriterMessage(BASE);
-    expect(msg).toContain("Write the FULL 25-minute script now");
+    expect(msg).toContain("Write the FULL 20-minute script now");
     expect(msg).toContain("TRACK-BY-TRACK MAKING-OF WALK"); // length-forcing structure directive
     expect(msg).toContain("AT LEAST 12 SPOKEN parts");
     expect(msg).toContain("RESEARCH NOTES (your only source of facts)");
@@ -44,13 +44,13 @@ describe("buildWriterMessage", () => {
     expect(msg).toContain("cut the Flaming Lips claim");
     expect(msg).toContain("Old draft body.");
     expect(msg).toContain("RESEARCH NOTES"); // still grounded in the notes
-    expect(msg).not.toContain("Write the FULL 25-minute script now");
+    expect(msg).not.toContain("Write the FULL 20-minute script now");
   });
 
   it("revise mode needs BOTH notes and a draft — notes alone stays fresh", () => {
     const msg = buildWriterMessage({ ...BASE, revisionNotes: "fix things" });
     expect(msg).not.toContain("REVISION PASS");
-    expect(msg).toContain("Write the FULL 25-minute script now");
+    expect(msg).toContain("Write the FULL 20-minute script now");
   });
 });
 

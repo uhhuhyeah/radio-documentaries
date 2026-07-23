@@ -186,12 +186,24 @@ export const factCheckScriptTool = defineTool({
   execute: async (_id, params) => {
     const findings = await factCheckFiles(params.scriptPath, params.researchPath);
     const contradictions = findings.filter((f) => f.severity === "CONTRADICTION").length;
+    const unsupported = findings.length - contradictions;
+    // Disposition guidance, right in the result: CONTRADICTIONs are actionable; UNSUPPORTED is
+    // advisory and must NOT drive a revision — the checker is non-deterministic, so revising a
+    // near-clean draft for advisory findings churns the text and makes fact-check WORSE, not better.
+    const disposition =
+      findings.length === 0
+        ? "OK — nothing to act on; proceed."
+        : `ACTION: fix the ${contradictions} CONTRADICTION(s) with revisionNotes. ` +
+          `The ${unsupported} UNSUPPORTED finding(s) are ADVISORY — do NOT revise for them ` +
+          `(note them in your handoff) unless one is a blatant stated-as-fact invention. ` +
+          `With 0 contradictions, do not revise on this result.`;
     const summary =
       findings.length === 0
         ? "factcheck: OK — no unsupported or contradicted album-facts"
-        : `factcheck: ${findings.length} finding(s), ${contradictions} contradiction(s)\n` +
+        : `factcheck: ${findings.length} finding(s), ${contradictions} contradiction(s), ${unsupported} unsupported\n` +
+          `${disposition}\n` +
           findings.map((f) => `  [${f.severity}] ${f.quote} — ${f.issue}`).join("\n");
-    return result(summary, { findings, contradictions });
+    return result(summary, { findings, contradictions, unsupported, disposition });
   },
 });
 

@@ -121,19 +121,20 @@ start-then-poll shape as `stage_audio(wait)`'s rescan wait, but split across two
 ### `qa_script` — the deterministic quality floor
 Checks lyric fidelity, runtime vs the house range, the **Subwave** station ident in the intro, no
 voiced `[source]` tags, and reference-track count + spread. Policy:
-- **A lyric-fidelity finding is a HOLD** ("possible fabricated lyric — not verbatim in the Track
-  Lyrics bank"). This is the #1 hallucination guard. Treat it as blocking: re-run `write_script` with
-  `revisionNotes` quoting the correct verbatim lyric; if it persists, hold for David — do not render a
-  script with an unverified quoted lyric. (Often the lyric is real but off by a word — name the exact
-  fix in the notes.)
+- **A lyric-fidelity "fix" finding is a HOLD** ("non-verbatim lyric — close but not exact"). This is
+  the #1 hallucination guard, and it's one of only two things that spends a rewrite: re-run
+  `write_script` with `revisionNotes` quoting the correct verbatim lyric; if it persists, hold for
+  David. (The soft "unverified quoted span" tier is usually dialogue — treat it as advisory, not a
+  fix.)
 - A **missing station ident** or a **voiced `[source]` tag**: re-run `write_script` with
   `revisionNotes` (cheap, clearly wrong).
-- Runtime / reference-spread warnings: advisory. Note them in the handoff; don't loop on them.
-- **NEVER revise to fix runtime.** `write_script` already settles length (it regenerates fresh until
-  the draft clears the house floor). If a script still comes back short, that's what the album's notes
-  honestly support — record it and proceed or hold; do **not** send a `revisionNotes` asking the Writer
-  to "deepen" or "lengthen." That pads the draft and *invents* — a supervised run once watched fact-check
-  go 2 → 14 findings doing exactly this. Length is set at generation, never in the revision loop.
+- Runtime / reference-spread warnings: advisory. Note them in the handoff; don't loop on them. The
+  house range is **~15–40 min (aim ~20)** — deliberately wide, so a normal-length episode never flags.
+- **NEVER revise to fix runtime.** `write_script` already settles length (fresh writes aim ~20 min and
+  regenerate if short). If a script still comes back short, that's what the album's notes honestly
+  support — record it and proceed or hold; do **not** send a `revisionNotes` asking the Writer to
+  "deepen" or "lengthen." That pads the draft and *invents* — a supervised run watched fact-check go
+  **2 → 14** doing exactly this. Length is set at generation, never in the revision loop.
 
 ### `factcheck_script` — the triage policy
 The checker is **advisory and non-deterministic** — re-running surfaces a *different* subset, so
@@ -145,18 +146,19 @@ Read the findings once and triage by `severity`:
   naming the exact claim to fix or cut (bounded: **≤2** rewrites total across QA+factcheck). If a
   contradiction survives, **hold for David** — never
   render a script that contradicts the research.
-- **`UNSUPPORTED`** (a stated-as-fact claim that isn't in the notes): **judge it**, using
-  `category` and `confidence`:
-  - Ignore checker **overreach**: opinion/persona colour, compression of a real note, or a claim the
-    script itself hedges out loud. These are not fabrications.
-  - Act on a **clear invention** stated as fact — most often `category: gear | credit | date`
-    (a specific console, an uncredited player, a wrong year) at `confidence: high`. One targeted
-    `write_script` rerun, then move on.
-  - When unsure, lean toward a hold over a render — but don't rewrite endlessly.
+- **`UNSUPPORTED`** (a stated-as-fact claim that isn't in the notes): **ADVISORY — do NOT revise for
+  it.** Note it in your handoff and move on. Revising a near-clean draft for advisory findings churns
+  the text and, because the checker is non-deterministic, *surfaces new findings and can introduce a
+  contradiction* — a supervised run went **3 → 9 findings (and gained a contradiction)** revising for
+  advisory flags. The only exception is a **blatant stated-as-fact invention** (e.g. a named producer
+  the notes never mention) — one targeted rerun for that, then stop.
 
-**Retry budget across QA + fact-check is 2 rewrites total.** After that, stop rewriting and hand the
-remaining findings to David with your read on each. Getting it in front of a human beats a third
-coin-flip rewrite.
+**Don't revise a clean draft.** If factcheck has **0 contradictions** and QA has **no lyric-"fix"**
+misses, go **straight to `budget_estimate`** — do not rewrite for advisory/unsupported/runtime. The
+fresh draft is usually the cleanest state an episode ever reaches; revising it tends to make it worse.
+
+**Retry budget is 2 rewrites total**, and only CONTRADICTIONS and lyric-"fix" misses spend it. After
+that, hand the remaining findings to David with your read. A human beats a third coin-flip rewrite.
 
 ### `budget_estimate` — the cost checkpoint
 Reports chars, spoken minutes, the model, and `≈ credits` (and `capOk` if you pass a `cap`). **Never

@@ -139,6 +139,35 @@ export function stripSpokenMarkdown(script: string): string {
     .join("\n");
 }
 
+function quoteYamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+export function deterministicFrontMatter(input: WriterInput, referenceTracks: number): string {
+  return [
+    "---",
+    `season: ${input.season}`,
+    `episode: ${input.episode}`,
+    `album: ${quoteYamlString(input.album)}`,
+    `artist: ${quoteYamlString(input.artist)}`,
+    `host: ${input.host}`,
+    `host_name: ${quoteYamlString(input.hostName)}`,
+    `model: ${input.model ?? config.elevenlabs.model}`,
+    `target_minutes: ${input.targetMinutes ?? 20}`,
+    `reference_tracks: ${referenceTracks}`,
+    "---",
+  ].join("\n");
+}
+
+export function injectFrontMatter(script: string, input: WriterInput): string {
+  const ep = sm.parse(script);
+  const nSongs = sm.songSlots(ep).length;
+  const bodyStart = script.indexOf("\n---", 3);
+  if (bodyStart === -1) return script;
+  const body = script.slice(bodyStart + "\n---".length).replace(/^\n/, "");
+  return `${deterministicFrontMatter(input, nSongs)}\n${body}`;
+}
+
 /**
  * Build the Writer's user message. Pure (no LLM/IO) so both modes are unit-testable.
  * Fresh mode: generate the full script from the notes. Revise mode (revisionNotes + previousDraft
@@ -255,6 +284,5 @@ export async function writeScript(input: WriterInput): Promise<string> {
   const gen = async (): Promise<string> =>
     capSongSlots(stripSpokenMarkdown(await complete(WRITER_SYSTEM, buildWriterMessage(input))));
   const script = await generateForLength(gen, { revising });
-  const nSongs = sm.songSlots(sm.parse(script)).length;
-  return script.replace(/^reference_tracks:.*$/m, `reference_tracks: ${nSongs}`);
+  return injectFrontMatter(script, input);
 }

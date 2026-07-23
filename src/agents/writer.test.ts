@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import * as lint from "../lint";
 import * as sm from "../scriptmodel";
-import { buildWriterMessage, capSongSlots, generateForLength, keepIndices, spokenMinutes, stripSpokenMarkdown, type WriterInput } from "./writer";
+import {
+  buildWriterMessage,
+  capSongSlots,
+  generateForLength,
+  injectFrontMatter,
+  keepIndices,
+  spokenMinutes,
+  stripSpokenMarkdown,
+  type WriterInput,
+} from "./writer";
 
 const BASE: WriterInput = {
   album: "Weathervanes",
@@ -131,6 +140,59 @@ describe("capSongSlots", () => {
   it("leaves a script with ≤5 songs untouched", () => {
     const four = build(4);
     expect(capSongSlots(four)).toBe(four);
+  });
+});
+
+describe("injectFrontMatter", () => {
+  it("overwrites LLM-copied metadata from the authoritative writer input", () => {
+    const script = [
+      "---",
+      "season: 9",
+      "episode: 8",
+      'album: "Wrong"',
+      'artist: "Wrong Artist"',
+      "host: p_jools",
+      'host_name: "Jools"',
+      "model: wrong_model",
+      "target_minutes: 99",
+      "reference_tracks: 1",
+      "---",
+      "## [01] SPOKEN · intro",
+      "Words.",
+      "",
+      "## [02] SONG · song-1",
+      '- title: "Track 1"',
+      "",
+      "## [03] SONG · song-2",
+      '- title: "Track 2"',
+      "",
+    ].join("\n");
+
+    const out = injectFrontMatter(script, {
+      ...BASE,
+      season: 1,
+      episode: 3,
+      album: "Weathervanes",
+      artist: "Jason Isbell and the 400 Unit",
+      host: "p_cara",
+      hostName: "Cara",
+      model: "eleven_flash_v2_5",
+      targetMinutes: 25,
+    });
+    const ep = sm.parse(out);
+
+    expect(ep.frontMatter).toMatchObject({
+      season: 1,
+      episode: 3,
+      album: "Weathervanes",
+      artist: "Jason Isbell and the 400 Unit",
+      host: "p_cara",
+      host_name: "Cara",
+      model: "eleven_flash_v2_5",
+      target_minutes: 25,
+      reference_tracks: 2,
+    });
+    expect(out).toContain("## [01] SPOKEN · intro\nWords.");
   });
 });
 

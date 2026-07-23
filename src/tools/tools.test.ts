@@ -1,3 +1,5 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +39,40 @@ describe("budget_estimate tool", () => {
   it("applies a cap", async () => {
     const res = await run(budgetEstimateTool, { scriptPath: join(FIX, "clean_script.md"), cap: 1 });
     expect(res.details.capOk).toBe(false);
+  });
+
+  it("surfaces an unknown-model cap verdict instead of omitting the cap check", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "budget-tool-"));
+    try {
+      const scriptPath = join(dir, "script.md");
+      writeFileSync(
+        scriptPath,
+        [
+          "---",
+          "season: 1",
+          "episode: 1",
+          'album: "A"',
+          'artist: "B"',
+          "host: p_cara",
+          'host_name: "Cara"',
+          "model: unknown_model",
+          "target_minutes: 20",
+          "reference_tracks: 0",
+          "---",
+          "## [01] SPOKEN · intro",
+          "Some words.",
+          "",
+        ].join("\n"),
+      );
+
+      const res = await run(budgetEstimateTool, { scriptPath, cap: 1000 });
+      expect(res.details.capOk).toBeNull();
+      expect(res.details.capStatus).toBe("unknown-model");
+      expect(res.content[0].text).toContain("cannot evaluate");
+      expect(res.content[0].text).toContain("unknown_model");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

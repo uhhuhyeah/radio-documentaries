@@ -89,7 +89,9 @@ The code is organised into four distinct layers, each with a clear dependency di
 │         Deterministic Domain Modules          │
 │  (scriptmodel.ts, catalog.ts, lint.ts,        │
 │   budget.ts, render.ts, navidrome.ts,         │
-│   elevenlabs.ts, publish.ts)                  │
+│   elevenlabs.ts, publish.ts, qa.ts,           │
+│   factcheck.ts, job-status.ts, credit.ts,     │
+│   preflight.ts, stage.ts)                     │
 │  Pure logic + API wrappers, fully testable    │
 ├──────────────────────────────────────────────┤
 │         Sub-agent Implementations             │
@@ -178,15 +180,23 @@ export const documentaryTools = [
   catalogListTool,
   catalogAssignTool,
   catalogSetStatusTool,
-  researchAlbumTool,   // ← this one is special — see §4
-  writeScriptTool,     // ← this one too
+  researchAlbumTool,     // ← sub-agent tool — see §4
+  writeScriptTool,       // ← sub-agent tool — see §4
   lintScriptTool,
+  factCheckScriptTool,
+  qaScriptTool,
   budgetEstimateTool,
-  renderEpisodeTool,
+  creditCheckTool,
+  renderEpisodeTool,     // ← async background job — see §4
+  waitRenderTool,
+  renderStatusTool,
+  stageAudioTool,
   navidromeFindAlbumTool,
   navidromeAlbumSongsTool,
   navidromeScanStatusTool,
+  waitScanTool,
   navidromeCreatePlaylistTool,
+  publishEpisodeTool,
 ];
 ```
 
@@ -258,6 +268,32 @@ export async function researchAlbum(album, artist, notesPath, focus?) {
 |---|---|---|---|
 | **Orchestrator** (Producer) | Pi agent (`createAgentSession` + `session.prompt()`) | Has tools — calls them to accomplish a multi-step task | High-level workflow control |
 | **Sub-agent** (Researcher, Writer) | Plain async function calling `llm.complete()` | No tools — one-shot LLM call with a system prompt | Single creative task that doesn't need tool use |
+| **Async background job** (Render, also Research) | Detached process (`spawn` + sentinel) | No tools; status-only via `wait_*` polling | Long-running job that can outlast the MCP request timeout (render: 10+ min, research: ~5-10 min) |
+
+### A third tier: async background jobs
+
+Some tasks are too long to fit inside an MCP request timeout (Hermes has a 600s per-request limit). These use a **third pattern**: the tool spawns a detached background process that writes a status sentinel — a small JSON file next to the job's anchor file (`<workdir>/research.status.json` or `<workdir>/render.status.json`) — and returns immediately. A companion `wait_*` tool polls the sentinel until the job settles. The sentinel carries the job's state (`running` → `done` / `error`), the pid, and a terminal result payload.
+
+This machinery lives in `src/job-status.ts` — a **shared async transport** parameterised by job name. Both `research_album`/`wait_research` and `render_episode`/`wait_render` use it. The verdict is a pure function (`jobPollDecision`) with a bounded timeout that returns `running` (caller re-polls) instead of throwing, so the caller never hits a hard timeout wall.
+
+For the render, the detached runner is `src/render-runner.ts` — a standalone script invoked via `tsx` that calls the existing `renderEpisode()` function and writes the terminal sentinel. A failed spawn is caught and recorded as an `error` sentinel rather than crashing the MCP server.
+
+```typescript
+// src/tools/index.ts — async render tool (simplified)
+export const renderEpisodeTool = defineTool({
+  name: "render_episode",
+  description: "Start rendering… spawns a detached background job…",
+  execute: async (_id, params) => {
+    const child = spawn("pnpm", ["exec", "tsx", "src/render-runner.ts", argsJson], {
+      detached: true,
+      stdio: ["ignore", log, log],
+    });
+    child.unref();
+    writeJobStatus(params.scriptPath, "render", { state: "running", pid: child.pid, startedAt });
+    return result(`render started (pid ${child.pid}) — poll wait_render`, { state: "started" });
+  },
+});
+```
 
 ### Why not make the sub-agents Pi agents too?
 
@@ -271,8 +307,9 @@ This is the **bounded LLM** pattern: the LLM is confined to exactly the creative
 ### Lessons
 
 1. **Don't make a Pi agent unless the sub-task genuinely needs tool-using autonomy.** A one-shot LLM call with a good system prompt is simpler, cheaper, and more reliable.
-2. **The same tool-adapter interface is used for both** — the orchestrator doesn't know or care whether the tool calls a function or runs an LLM.
+2. **The same tool-adapter interface is used for all three tiers** — the orchestrator doesn't know or care whether the tool calls a function, runs an LLM, or spawns a background job.
 3. **Sub-agent tools produce a file as their output.** This makes the pipeline resumable and debuggable: if the Writer fails, you can inspect `research.md` and re-run. Files are the communication channel between stages.
+4. **Isolate the async transport from the business logic.** `job-status.ts` owns the sentinel format, poll-decision logic, and wait loop — it's pure and unit-tested. The runner (`render-runner.ts`) only calls the domain function and writes the result. Neither knows about the other's domain.
 
 ---
 
@@ -335,7 +372,17 @@ You are the Script Writer for a SUB/WAVE...
 export const RESEARCHER_SYSTEM = `
 You are the Researcher for a SUB/WAVE...
 `.trim();
+
+export const SCRIPT_FACTCHECK_SYSTEM = `
+You are the Fact-Checker for a finished SUB/WAVE "Making Of" documentary SCRIPT...
+`.trim();
+
+export const SCRIPT_FACTCHECK_VERIFY_SYSTEM = `
+You are re-adjudicating a first-pass fact-check...
+`.trim();
 ```
+
+Note the **verify prompt** — a second-pass precision check that re-adjudicates the first pass's findings. This two-pass pattern compensates for the fact-checker's non-determinism, upgrading misfiled contradictions and discarding false positives.
 
 ### Why this organisation
 
@@ -343,21 +390,28 @@ You are the Researcher for a SUB/WAVE...
 - **The prompt IS code** — it defines the agent's behaviour as precisely as any function. Treating it as documentation (a separate markdown file that drifts from the code) would be a bug source.
 - **Prompts reference the machine-verifiable contracts** — the Writer prompt describes the exact `script-format.md` contract the linter enforces. If the format changes, the prompt must change too, and they live in the same commit.
 
-### The Producer prompt as a state machine
+### The Producer prompt as a state machine + behavioural rules
 
-The Producer's system prompt is structured as a numbered flow:
+The Producer's system prompt is structured as a numbered flow, plus explicit rules that encode *when not to act* as well as what to do:
 
 ```
 Flow for a trigger like "Making of <album> by <artist>, <host> to host":
 1. catalog_assign(...) → get the season/episode + working-dir name.
 2. Create the working directory (write/bash) named exactly as returned.
-3. research_album(...) — runs the Researcher.
-4. write_script(...) — runs the Writer against ONLY those notes.
+3. research_album(...) → wait_research(...) until done.
+4. write_script(...) — runs the Writer against ONLY those notes. It also settles LENGTH.
 5. lint_script(...) — the script MUST pass (zero errors) before rendering.
-...
+6. factcheck_script(...) — REVISE SPARINGLY: only CONTRADICTIONS get a rewrite.
+7. budget_estimate(...) — do not exceed the cap without approval.
+8. render_episode(...) START → wait_render(...) until done.
+9. catalog_set_status(..., "recorded") → stage_audio(...).
+10. publish_episode(...) → catalog_set_status(..., "published").
+
+RULES: Never revise for runtime. Never revise for UNSUPPORTED findings. Never rotate the
+Navidrome password. Hosts are only Cara or Jools. Stop and report — do not guess.
 ```
 
-This is essentially a **deterministic workflow encoded as a prompt** — the steps are enumerated in order, the success criteria are explicit ("must pass zero errors"), and the fallback is stated ("If it fails, call write_script again or report the blockers").
+This is a **deterministic workflow encoded as a prompt** — the steps are enumerated in order, the success criteria are explicit, and the rules cover both what to do and what *not* to do. The "never revise for X" rules are as important as the numbered steps: they prevent the model from looping on non-deterministic checks or inventing facts to reach a length target.
 
 ### Lessons
 
@@ -414,6 +468,19 @@ The format is specified in `script-format.md` and codified in `scriptmodel.ts` (
 
 The Writer's system prompt instructs the model to follow this format exactly. The linter then enforces it mechanically. **The linter gates rendering** — if it finds errors, the episode stops.
 
+### The same contract philosophy — beyond format, into facts and quality
+
+The contract pattern extends past the script format to two additional gates:
+
+**QA (`src/qa.ts`)** — the lyric fidelity gate. Quoted lyrics are validated against a verbatim bank extracted from the research notes. Rather than a brittle substring match, the check uses **fuzzy substring similarity** (edit-distance-based) with three tiers:
+- `ok` (≥0.9 similarity) — verbatim or transcription noise (spelled-out letters, stray articles); passes
+- `fix` (≥0.55 similarity) — a real lyric, imperfectly quoted; flags for revision
+- `unknown` (<0.55 similarity) — likely dialogue or a fabrication; flags for review
+
+This tuning lets real-world transcription differences (LRCLIB vs. the transcript — "fuckin'"/"fucking", stray articles) pass while catching genuine misquotes. QA also enforces a wide house range (15–40 min, aim ~20) so length is an advisory guard, not a hard gate.
+
+**Fact-check (`src/factcheck.ts`)** — a two-pass verification system. The first pass (`SCRIPT_FACTCHECK_SYSTEM`) flags claims as `CONTRADICTION` or `UNSUPPORTED`. The second pass (`SCRIPT_FACTCHECK_VERIFY_SYSTEM`) re-adjudicates each finding against the research, upgrading misfiled contradictions and dropping findings the research actually supports. The result is a reliable signal: contradictions are actionable, unsupported claims are advisory and should NOT trigger a revision.
+
 ### Why this matters
 
 LLMs are great at creative tasks but unreliable at following structural rules. Rather than hoping the model gets it right, the harness:
@@ -422,6 +489,7 @@ LLMs are great at creative tasks but unreliable at following structural rules. R
 2. **Parses the output** — if the structure is recoverable, the code handles it
 3. **Validates the parsed structure** — if it's wrong, fail fast
 4. **Reports what's wrong** — so the LLM can retry with targeted feedback, or the human can intervene
+5. **For non-deterministic checks (fact-check, QA), use a tiered or two-pass design** — a single LLM call is unreliable; a verification pass or fuzzy threshold makes the signal actionable
 
 ### Lessons
 
@@ -440,8 +508,12 @@ The harness uses no database. All state is in files:
 |---|---|---|
 | Episode catalog | `seasons.md` | `catalog.ts` |
 | Research notes | `<workdir>/research.md` | Researcher |
+| Research job status | `<workdir>/research.status.json` | `job-status.ts` (bound by `research-status.ts`) |
+| Research runner log | `<workdir>/research.log` | `research-runner.ts` |
 | Script | `<workdir>/script.md` | Writer |
 | QC issues | `<workdir>/qc-issues.md` | Writer |
+| Render job status | `<workdir>/render.status.json` | `job-status.ts` (written by `render-runner.ts`) |
+| Render runner log | `<workdir>/render.log` | `render-runner.ts` |
 | Cue sheet | `<workdir>/rundown.json` | Renderer |
 | Audio segments | `<workdir>/audio/*.mp3` | Renderer |
 | Config | `settings.toml` + `.env` | `config.ts` |
@@ -568,12 +640,24 @@ do not exceed the cap without explicit approval.
 
 This is one of the prompt-as-state-machine rules: a creative step (rendering, which costs money) requires an explicit approval step. The model won't proceed without it.
 
+### Async job failure modes
+
+The async background job pattern introduces distinct failure modes that `jobPollDecision` handles via a strict verdict precedence:
+
+1. **Terminal error** — the runner wrote an `error` sentinel with a message (e.g. credit guard refusal). The `wait_*` tool returns `state: "error"` with the message preserved.
+2. **Stale process** — the sentinel says `running` but the pid is dead (the process crashed without writing a terminal state). The verdict is `"stale"` — reported as an error, so the caller never waits forever for a dead process.
+3. **Bounded timeout** — the sentinel still says `running`, the pid is alive, but the polling window has elapsed. Unlike a scan timeout, this returns `"running"` — NOT an error — because these jobs genuinely take many minutes and the caller should just call `wait_*` again.
+4. **Missing sentinel** — no sentinel file exists yet. The tool keeps polling; at the timeout boundary it returns `"running"` rather than erroring.
+
+Precedence is deliberate: a terminal state (done/error) wins over everything, so a job that settles exactly at the deadline still reports its real outcome. A dead pid under a `running` sentinel never reports "keep waiting."
+
 ### Lessons
 
 1. **Tell the model what to do on error.** "Stop and report" is better than "be careful."
 2. **Use custom error classes for domain-specific failures.** The model sees the error message and can act on it.
 3. **Hard gates for expensive operations.** Budget check before rendering, lint check before publishing.
 4. **Fail fast.** If a stage fails, the pipeline stops. No silent recovery that might produce bad output.
+5. **For async jobs, differentiate between "still running" and "stuck."** A bounded timeout that returns `running` (re-poll) vs. `error` (stale process) is the key design decision — the verdict must be a pure function so it's testable without I/O.
 
 ---
 
@@ -597,13 +681,18 @@ This is one of the prompt-as-state-machine rules: a creative step (rendering, wh
 ### What's tested
 
 ```
-src/budget.test.ts        — credit estimation from parsed scripts
-src/catalog.test.ts       — reading, assigning, setting status in seasons.md
-src/config.test.ts         — TOML loading with env overrides
-src/lint.test.ts           — every lint rule against clean/broken scripts
-src/navidrome.test.ts      — Subsonic auth, response parsing, matching (pure functions)
-src/render.test.ts         — render plan, cue sheet, sanitizeForTts, TTS request shaping
-src/scriptmodel.test.ts    — front matter parsing, slot parsing, malformed headings
+src/budget.test.ts           — credit estimation from parsed scripts
+src/catalog.test.ts          — reading, assigning, setting status in seasons.md
+src/config.test.ts           — TOML loading with env overrides
+src/factcheck.test.ts        — finding parsing, verdict parsing, applyVerdicts (verification pass)
+src/job-status.test.ts       — sentinel serialization/parse round-trips, jobPollDecision verdicts
+src/lint.test.ts              — every lint rule against clean/broken scripts
+src/navidrome.test.ts         — Subsonic auth, response parsing, matching (pure functions)
+src/qa.test.ts                — lyric fidelity (fuzzy matching tiers), station ident, reference-track spread, length house range
+src/render.test.ts            — render plan, cue sheet, sanitizeForTts, TTS request shaping
+src/scriptmodel.test.ts       — front matter parsing, slot parsing, malformed headings
+src/tools/render.test.ts      — tool-level tests: render_status, wait_render, render_episode double-start guard
+src/agents/writer.test.ts     — buildWriterMessage modes, stripSpokenMarkdown, capSongSlots, generateForLength
 ```
 
 ### Testing pattern
@@ -644,11 +733,11 @@ src/
 ├── agents/                  # LLM sub-agent implementations
 │   ├── producer.ts          # Pi agent orchestration
 │   ├── researcher.ts        # Brave Search + LLM synthesis
-│   ├── writer.ts            # Research → script via LLM
-│   └── system-prompts.ts    # All system prompts in one file
+│   ├── writer.ts            # Research → script via LLM + length-settling, markdown stripping, song-slot capping
+│   └── system-prompts.ts    # All system prompts in one versioned file
 ├── tools/                   # Pi tool adapters
-│   ├── index.ts             # Tool registry + all deterministic tools
-│   ├── subagents.ts         # Agent-as-tool adapters
+│   ├── index.ts             # Tool registry — every deterministic tool + agent-as-tool adapters
+│   ├── subagents.ts         # Sub-agent tool adapters (research_album, wait_research, write_script)
 │   ├── web.ts               # Web search/fetch tools + pure helpers
 │   ├── lyrics.ts            # LRCLIB lyrics fetch tool + pure helpers
 │   └── util.ts              # result() helper
@@ -657,15 +746,24 @@ src/
 ├── catalog.ts               # seasons.md reader/mutator
 ├── cli.ts                   # Human-facing CLI
 ├── config.ts                # settings.toml loader
-├── constants.ts             # Personas, credit rates, shared constants
+├── constants.ts             # Personas, credit rates, WORDS_PER_MINUTE, shared constants
+├── credit.ts                # Credit balance check (ElevenLabs API)
 ├── elevenlabs.ts            # ElevenLabs TTS client
-├── lint.ts                  # Script validator
+├── factcheck.ts             # Script fact-checking + verification pass (CONTRADICTION / UNSUPPORTED)
+├── job-status.ts            # Shared async job transport: sentinel serialization, poll-decision, wait loop
+├── lint.ts                  # Script validator (the primary machine gate)
 ├── llm.ts                   # pi-ai abstraction (complete())
-├── navidrome.ts             # Subsonic API client
+├── navidrome.ts             # Subsonic API client (pure functions + Subsonic class)
+├── preflight.ts             # Network preflight check (make-ability gate)
 ├── producer-run.ts          # Entry point for the Producer
-├── publish.ts               # Navidrome playlist builder
-├── render.ts                # TTS renderer + plan/cue generation
-├── scriptmodel.ts           # Script parser (shared foundation)
+├── publish.ts               # Navidrome playlist builder (used by publish_episode tool)
+├── qa.ts                    # Quality checks: lyric fidelity (fuzzy matching), station ident, runtime, reference tracks
+├── render.ts                # TTS renderer + plan/cue generation + credit hard-stop
+├── render-runner.ts         # Detached background runner for async render_episode
+├── research-runner.ts       # Detached background runner for async research_album
+├── research-status.ts       # Thin wrapper over job-status.ts binding the "research" job name
+├── scriptmodel.ts           # Script parser (shared foundation parsed by lint, budget, render, qa)
+├── stage.ts                 # NAS staging (copy MP3s + trigger Navidrome rescan)
 └── *.test.ts                # Co-located tests
 ```
 
@@ -679,6 +777,8 @@ src/
 | **No `utils/` grab-bag** | Each module is named for its domain (navidrome, elevenlabs, catalog...) |
 | **One system-prompts file** | All agent "personalities" are legible at once |
 | **CLI is a thin dispatch** | Just argument parsing → delegates to domain functions |
+| **Shared async transport in `job-status.ts`** | The sentinel format, poll-decision logic, and wait loop are pure and shared between research and render — neither runner duplicates polling infrastructure |
+| **Detached runners as `*-runner.ts`** | A standalone script (invoked via `tsx`) that calls the domain function and writes the sentinel; keeps the I/O-heavy spawn logic out of the tool adapter |
 
 ---
 
@@ -697,11 +797,12 @@ src/
 2. **Test fixtures** — the contracts the LLM must satisfy (clean + broken inputs)
 3. **Linter/validator** — the machine gate that asserts the contract
 4. **LLM plumbing** — the `complete()` abstraction
-5. **Sub-agent implementations** — the LLM calls behind a deterministic orchestration layer
-6. **Tool adapters** — thin wrappers over domain functions
-7. **Agent system prompt** — the orchestrator's personality, workflow, and error rules
-8. **CLI** — human entrypoint for each tool (smoke-testing and debugging)
-9. **Producer entrypoint** — `createAgentSession` + tools + prompt
+5. **Async job infrastructure** (if needed) — shared sentinel format, poll-decision logic, wait loop (`job-status.ts`)
+6. **Sub-agent implementations** — the LLM calls behind a deterministic orchestration layer
+7. **Tool adapters** — thin wrappers over domain functions (synchronous) and detached runners (async)
+8. **Agent system prompt** — the orchestrator's personality, workflow, and error rules
+9. **CLI** — human entrypoint for each tool (smoke-testing and debugging)
+10. **Producer entrypoint** — `createAgentSession` + tools + prompt
 
 ### Questions to answer for each tool
 
@@ -712,6 +813,7 @@ src/
 - [ ] What does it return? (text summary for the model + structured `details`)
 - [ ] Does it have side effects? (file writes, network calls, money spent)
 - [ ] Is the underlying function already tested?
+- [ ] **Is it synchronous or async?** If it can outlast the MCP request timeout, design a start + poll + sentinel pattern with a shared `job-status.ts` transport
 
 ### Questions to answer for the agent prompt
 
@@ -737,12 +839,17 @@ src/
 | File | Role |
 |---|---|
 | `src/producer.ts` | Pi agent session creation — the orchestrator's runtime |
-| `src/tools/index.ts` | Tool registry — the complete list of what the agent can do |
-| `src/tools/subagents.ts` | Sub-agent tools — showing the agent-as-tool pattern |
+| `src/tools/index.ts` | Tool registry — the complete list of what the agent can do (now 21 tools) |
+| `src/tools/subagents.ts` | Sub-agent tool adapters — agent-as-tool + async background jobs |
 | `src/llm.ts` | One-shot LLM abstraction used by all sub-agents |
-| `src/agents/system-prompts.ts` | All prompts in one versioned file |
-| `src/lint.ts` | The most important machine gate |
+| `src/agents/system-prompts.ts` | All prompts in one versioned file (Producer, Writer, Researcher, Fact-checker, Verify) |
+| `src/lint.ts` | The most important machine gate — script format validation |
 | `src/scriptmodel.ts` | The parser that the entire pipeline depends on |
 | `src/catalog.ts` | Fence-aware markdown table parser — a useful pattern |
+| `src/factcheck.ts` | Two-pass fact-checking: first pass finds contradictions, verification pass re-adjudicates severities |
+| `src/job-status.ts` | Shared async job transport: sentinel serialization, poll-decision logic (`jobPollDecision`), `waitForJob` loop — used by both research and render |
+| `src/qa.ts` | Quality checks: fuzzy lyric matching (3 tiers), station ident, runtime house range, reference-track spread |
+| `src/render-runner.ts` | Detached background process for async ElevenLabs render — writes `render.status.json` sentinel |
+| `src/research-status.ts` | Thin wrapper over `job-status.ts` binding the `"research"` job name |
 | `producer-guide.md` | The design document that preceded the code |
 | `script-format.md` | The contract specification |

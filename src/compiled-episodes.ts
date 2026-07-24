@@ -338,18 +338,36 @@ function findStagedEpisodeSource(musicDir: string, season: number, episode: numb
 }
 
 export function normalizeSourceFilenameForMatch(filename: string): string {
-  return basename(filename, extname(filename))
-    .toLowerCase()
+  return sourceFilenameMatchKeys(filename)[0] ?? "";
+}
+
+export function sourceFilenameMatchKeys(filename: string): string[] {
+  const base = basename(filename, extname(filename)).toLowerCase();
+  const strippedBase = stripTrackPrefix(base);
+  const parts = strippedBase
+    .split(/(?:\s+-\s+|_+)/)
+    .filter(Boolean);
+  const candidates = new Set<string>();
+  for (let i = 0; i < parts.length; i++) candidates.add(parts.slice(i).join(" "));
+  candidates.add(strippedBase);
+  return Array.from(candidates)
+    .map((candidate) => stripTrackPrefix(candidate)
+      .replace(/[^a-z0-9]+/g, ""))
+    .filter(Boolean);
+}
+
+function stripTrackPrefix(value: string): string {
+  return value
     .replace(/^\d{1,2}[-.]\d{1,2}\s*-\s*/, "")
     .replace(/^\d{1,2}\.\d{1,2}\s+/, "")
-    .replace(/[^a-z0-9]+/g, "");
+    .replace(/^\d{1,2}\s+/, "");
 }
 
 export function matchSiblingSourceFilename(files: string[], missingFilename: string): string | null {
-  const wanted = normalizeSourceFilenameForMatch(missingFilename);
-  if (!wanted) return null;
+  const wanted = new Set(sourceFilenameMatchKeys(missingFilename));
+  if (wanted.size === 0) return null;
   return files
-    .filter((f) => normalizeSourceFilenameForMatch(f) === wanted)
+    .filter((f) => sourceFilenameMatchKeys(f).some((key) => wanted.has(key)))
     .sort()[0] ?? null;
 }
 

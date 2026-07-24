@@ -10,7 +10,7 @@ import {
   readFileSync,
   readdirSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import { config } from "./config";
@@ -248,13 +248,14 @@ async function resolvePlaylistSourcesForEpisode(
   const sources: SourceItem[] = [];
   for (const [i, entry] of entries.entries()) {
     const id = entry?.id === undefined ? undefined : String(entry.id);
-    let rawPath = entry?.path === undefined ? undefined : String(entry.path);
-    if (!rawPath && id) {
+    const rawPaths: string[] = [];
+    if (entry?.path !== undefined) rawPaths.push(String(entry.path));
+    if (id) {
       const song = await client.getSong(id);
-      rawPath = song.path === undefined ? undefined : String(song.path);
+      if (song.path !== undefined) rawPaths.push(String(song.path));
     }
-    if (!rawPath) throw new Error(`playlist entry '${entry?.title ?? id ?? "?"}' has no source path`);
-    const mapped = mapNavidromePath(rawPath, config.navidrome.musicRootNavidrome, config.navidrome.musicRootPipeline);
+    if (rawPaths.length === 0) throw new Error(`playlist entry '${entry?.title ?? id ?? "?"}' has no source path`);
+    const mapped = unique(rawPaths).map((p) => mapNavidromePath(p, config.navidrome.musicRootNavidrome, config.navidrome.musicRootPipeline));
     const resolvedPath = resolveExistingSourcePath(mapped, opts.season, opts.episode, i + 1);
     sources.push({
       id,
@@ -266,16 +267,27 @@ async function resolvePlaylistSourcesForEpisode(
   return { playlistName, sources };
 }
 
-function resolveExistingSourcePath(mapped: string, season: number | undefined, episode: number | undefined, playlistIndex: number): string {
-  assertPathUnder(mapped, [config.navidrome.musicRootPipeline, config.nas.musicDir]);
-  if (existsSync(mapped)) return mapped;
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function resolveExistingSourcePath(mappedCandidates: string[], season: number | undefined, episode: number | undefined, playlistIndex: number): string {
+  for (const mapped of mappedCandidates) {
+    assertPathUnder(mapped, [config.navidrome.musicRootPipeline, config.nas.musicDir]);
+    if (existsSync(mapped)) return mapped;
+  }
 
   const staged = season === undefined || episode === undefined
     ? null
     : findStagedEpisodeSource(config.nas.musicDir, season, episode, playlistIndex);
   if (staged) return staged;
 
-  throw new Error(`source file not found: ${mapped}`);
+  for (const mapped of mappedCandidates) {
+    const sibling = findSiblingSource(mapped);
+    if (sibling) return sibling;
+  }
+
+  throw new Error(`source file not found: ${mappedCandidates[0]}`);
 }
 
 export function stagedSegmentPrefix(season: number, episode: number, playlistIndex: number): string {
@@ -298,6 +310,32 @@ function findStagedEpisodeSource(musicDir: string, season: number, episode: numb
   if (!match) return null;
   const path = join(dir, match);
   assertPathUnder(path, [musicDir]);
+  return path;
+}
+
+export function normalizeSourceFilenameForMatch(filename: string): string {
+  return basename(filename, extname(filename))
+    .toLowerCase()
+    .replace(/^\d{1,2}[-.]\d{1,2}\s*-\s*/, "")
+    .replace(/^\d{1,2}\.\d{1,2}\s+/, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+export function matchSiblingSourceFilename(files: string[], missingFilename: string): string | null {
+  const wanted = normalizeSourceFilenameForMatch(missingFilename);
+  if (!wanted) return null;
+  return files
+    .filter((f) => normalizeSourceFilenameForMatch(f) === wanted)
+    .sort()[0] ?? null;
+}
+
+function findSiblingSource(mapped: string): string | null {
+  const dir = dirname(mapped);
+  if (!existsSync(dir)) return null;
+  const match = matchSiblingSourceFilename(readdirSync(dir), basename(mapped));
+  if (!match) return null;
+  const path = join(dir, match);
+  assertPathUnder(path, [config.navidrome.musicRootPipeline]);
   return path;
 }
 

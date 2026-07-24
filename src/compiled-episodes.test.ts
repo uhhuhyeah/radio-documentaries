@@ -6,7 +6,9 @@ import {
   ffmetadataText,
   inferEpisodeFromTitle,
   mapNavidromePath,
+  matchSiblingSourceFilename,
   matchStagedSegmentFilename,
+  normalizeSourceFilenameForMatch,
   outputPathForTrack,
   sanitizeFilename,
   stagedSegmentPrefix,
@@ -61,6 +63,20 @@ describe("compiled episode helpers", () => {
         2,
       ),
     ).toBe("s01e04_02_part-1-green-light.mp3");
+  });
+
+  it("matches sibling album files when Navidrome has a stale filename format", () => {
+    expect(normalizeSourceFilenameForMatch("01-01 - DVD Menu-Garden Song.flac")).toBe("dvdmenugardensong");
+    expect(normalizeSourceFilenameForMatch("1.01 DVD Menu-Garden Song.flac")).toBe("dvdmenugardensong");
+    expect(
+      matchSiblingSourceFilename(
+        [
+          "1.01 DVD Menu-Garden Song.flac",
+          "1.02 Kyoto.flac",
+        ],
+        "01-01 - DVD Menu-Garden Song.flac",
+      ),
+    ).toBe("1.01 DVD Menu-Garden Song.flac");
   });
 
   it("escapes concat manifest single quotes", () => {

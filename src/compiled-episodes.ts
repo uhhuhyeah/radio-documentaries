@@ -191,6 +191,30 @@ export function ffmetadataText(
   return `${lines.join("\n")}\n`;
 }
 
+export function ffmpegMetadataArgs(metadata: {
+  title: string;
+  artist: string;
+  albumArtist: string;
+  album: string;
+  trackNumber?: number;
+  discNumber?: number;
+  genre?: string;
+  comment?: string;
+}): string[] {
+  const args = [
+    "-metadata", `title=${metadata.title}`,
+    "-metadata", `artist=${metadata.artist}`,
+    "-metadata", `album_artist=${metadata.albumArtist}`,
+    "-metadata", `albumartist=${metadata.albumArtist}`,
+    "-metadata", `album=${metadata.album}`,
+    "-metadata", `genre=${metadata.genre ?? DEFAULT_GENRE}`,
+    "-metadata", `comment=${metadata.comment ?? DEFAULT_COMMENT}`,
+  ];
+  if (metadata.trackNumber !== undefined) args.push("-metadata", `track=${metadata.trackNumber}`);
+  if (metadata.discNumber !== undefined) args.push("-metadata", `disc=${metadata.discNumber}`);
+  return args;
+}
+
 function escapeFfmetadata(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[=;#]/g, (m) => `\\${m}`);
 }
@@ -370,12 +394,13 @@ function compileSources(
     runFfmpeg(["-f", "concat", "-safe", "0", "-i", manifestPath, "-vn", ...codecArgs, tempAudio]);
 
     const chapters = includeChapters ? chaptersFromSources(durations) : [];
+    const taggedMetadata = { ...metadata, genre: DEFAULT_GENRE, comment: DEFAULT_COMMENT };
     const metadataPath = join(scratch, "metadata.ffmeta");
-    writeFileSync(metadataPath, ffmetadataText({ ...metadata, genre: DEFAULT_GENRE, comment: DEFAULT_COMMENT }, chapters), "utf-8");
+    writeFileSync(metadataPath, ffmetadataText(taggedMetadata, chapters), "utf-8");
     const muxArgs =
       outputFormat === "m4a"
-        ? ["-i", tempAudio, "-i", metadataPath, "-map", "0:a", "-map_metadata", "1", "-map_chapters", "1", "-c", "copy", "-movflags", "use_metadata_tags", tempFinal]
-        : ["-i", tempAudio, "-i", metadataPath, "-map", "0:a", "-map_metadata", "1", "-map_chapters", "1", "-c", "copy", tempFinal];
+        ? ["-i", tempAudio, "-i", metadataPath, "-map", "0:a", "-map_chapters", "1", ...ffmpegMetadataArgs(taggedMetadata), "-c", "copy", tempFinal]
+        : ["-i", tempAudio, "-i", metadataPath, "-map", "0:a", "-map_metadata", "1", "-map_chapters", "1", ...ffmpegMetadataArgs(taggedMetadata), "-c", "copy", tempFinal];
     runFfmpeg(muxArgs);
 
     const actualDuration = ffprobeDuration(tempFinal);

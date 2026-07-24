@@ -12,6 +12,9 @@
  *   pnpm cli credit-check --script path/to/script.md [--model M] [--cap N] [--allow-unknown-balance]
  *   pnpm cli navidrome ping | find-album --album A [--artist B] | album-songs --id ID | scan-status
  *   pnpm cli wait-scan [--timeout Ns] [--interval Ns]   # block until a rescan settles, then publish
+ *   pnpm cli compile-playlist --playlist-id ID [--season N --episode N]
+ *   pnpm cli compile-episode path/to/rundown.json
+ *   pnpm cli publish-compiled-season --season N
  *
  * The deterministic tools these wrap are also exposed to the Producer agent as
  * Pi tools (see src/tools/). This CLI is for humans and smoke-testing.
@@ -24,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { researchAlbum } from "./agents/researcher";
 import { writeScript } from "./agents/writer";
 import * as budget from "./budget";
+import { compileEpisodeTrack, compilePlaylistToTrack, publishCompiledSeasonPlaylist } from "./compiled-episodes";
 import { config } from "./config";
 import * as catalog from "./catalog";
 import { checkCredit } from "./credit";
@@ -46,6 +50,10 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
   return i !== -1 && i + 1 < args.length ? args[i + 1] : undefined;
+}
+
+function hasFlag(args: string[], name: string): boolean {
+  return args.includes(`--${name}`);
 }
 
 async function main(): Promise<number> {
@@ -272,6 +280,73 @@ async function main(): Promise<number> {
       return 0;
     } catch (e) {
       console.error(`publish error: ${String(e)}`);
+      return 1;
+    }
+  }
+
+  if (cmd === "compile-playlist") {
+    const args = [sub, ...rest].filter((x): x is string => !!x);
+    const playlistId = flag(args, "playlist-id");
+    if (!playlistId) {
+      console.error("compile-playlist requires --playlist-id");
+      return 2;
+    }
+    const season = flag(args, "season");
+    const episode = flag(args, "episode");
+    try {
+      const r = await compilePlaylistToTrack({
+        playlistId,
+        season: season === undefined ? undefined : Number(season),
+        episode: episode === undefined ? undefined : Number(episode),
+        rescan: !hasFlag(args, "no-rescan"),
+        wait: !hasFlag(args, "no-wait"),
+      });
+      console.log(`compiled ${r.sourceCount} tracks → ${r.outputPath}`);
+      if (r.navidromeSongId) console.log(`navidrome song id: ${r.navidromeSongId}`);
+      for (const warning of r.warnings) console.log(`warning: ${warning}`);
+      return 0;
+    } catch (e) {
+      console.error(`compile-playlist error: ${String(e)}`);
+      return 1;
+    }
+  }
+
+  if (cmd === "compile-episode") {
+    if (!sub) {
+      console.error("compile-episode requires a rundown.json path");
+      return 2;
+    }
+    try {
+      const r = await compileEpisodeTrack({
+        rundownPath: sub,
+        rescan: !hasFlag(rest, "no-rescan"),
+        wait: !hasFlag(rest, "no-wait"),
+      });
+      console.log(`compiled ${r.title} → ${r.outputPath}`);
+      if (r.navidromeSongId) console.log(`navidrome song id: ${r.navidromeSongId}`);
+      for (const warning of r.warnings) console.log(`warning: ${warning}`);
+      return 0;
+    } catch (e) {
+      console.error(`compile-episode error: ${String(e)}`);
+      return 1;
+    }
+  }
+
+  if (cmd === "publish-compiled-season") {
+    const args = [sub, ...rest].filter((x): x is string => !!x);
+    const season = flag(args, "season");
+    if (!season) {
+      console.error("publish-compiled-season requires --season");
+      return 2;
+    }
+    try {
+      const r = await publishCompiledSeasonPlaylist({ season: Number(season), name: flag(args, "name") });
+      console.log(`published "${r.playlistName}" with ${r.trackCount} tracks`);
+      console.log(`playlist id: ${r.playlistId}`);
+      if (r.playlistUrl) console.log(`playlist url: ${r.playlistUrl}`);
+      return 0;
+    } catch (e) {
+      console.error(`publish-compiled-season error: ${String(e)}`);
       return 1;
     }
   }

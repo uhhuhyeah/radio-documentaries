@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   chaptersFromSources,
   concatManifestLine,
+  ffmpegMetadataArgs,
   ffmetadataText,
   inferEpisodeFromTitle,
   mapNavidromePath,
@@ -110,5 +111,24 @@ describe("compiled episode helpers", () => {
     expect(text).toContain("album_artist=SUB/WAVE");
     expect(text).toContain("[CHAPTER]");
     expect(text).toContain("title=Intro\\; setup");
+  });
+
+  it("builds explicit ffmpeg metadata args for M4A-compatible standard tags", () => {
+    const args = ffmpegMetadataArgs({
+      title: "SUB/WAVE Docs · S01E01 — Punisher (Making Of)",
+      artist: "SUB/WAVE Documentaries",
+      albumArtist: "SUB/WAVE Documentaries",
+      album: "SUB/WAVE Docs",
+      trackNumber: 1,
+      discNumber: 1,
+    });
+    expect(args).toContain("title=SUB/WAVE Docs · S01E01 — Punisher (Making Of)");
+    expect(args).toContain("artist=SUB/WAVE Documentaries");
+    expect(args).toContain("album_artist=SUB/WAVE Documentaries");
+    expect(args).toContain("albumartist=SUB/WAVE Documentaries");
+    expect(args).toContain("album=SUB/WAVE Docs");
+    expect(args).toContain("track=1");
+    expect(args).not.toContain("-movflags");
+    expect(args).not.toContain("use_metadata_tags");
   });
 });

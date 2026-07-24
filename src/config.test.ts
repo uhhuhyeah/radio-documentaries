@@ -47,12 +47,40 @@ describe("loadConfig", () => {
     expect(loadConfig(p).budget.perEpisodeCap).toBe(9000);
   });
 
+  it("parses navidrome path mapping and compiled episode defaults", () => {
+    const p = tmpToml(
+      [
+        "[navidrome]",
+        'music_root_navidrome = "/music"',
+        'music_root_pipeline = "/mnt/music"',
+        "[compiled_episodes]",
+        'artist = "Docs Artist"',
+        'album = "Docs Album"',
+        'output_format = "mp3"',
+        'bitrate = "160k"',
+        "include_chapters = false",
+        'output_subdir = "Docs/Album"',
+      ].join("\n"),
+    );
+    const c = loadConfig(p);
+    expect(c.navidrome).toEqual({ musicRootNavidrome: "/music", musicRootPipeline: "/mnt/music" });
+    expect(c.compiledEpisodes).toEqual({
+      artist: "Docs Artist",
+      album: "Docs Album",
+      outputFormat: "mp3",
+      bitrate: "160k",
+      includeChapters: false,
+      outputSubdir: "Docs/Album",
+    });
+  });
+
   it("falls back to defaults when the file is absent", () => {
     const c = loadConfig("/nonexistent/settings.toml");
     expect(c.models.write).toContain("qwen");
     expect(c.elevenlabs.model).toBe("eleven_flash_v2_5");
     expect(c.voices.p_cara?.voiceId).toBeTruthy();
     expect(c.budget.perEpisodeCap).toBe(15000);
+    expect(c.compiledEpisodes.outputFormat).toBe("m4a");
   });
 
   it("env var overrides the per-episode cap", () => {

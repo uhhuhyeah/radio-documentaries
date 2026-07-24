@@ -32,6 +32,8 @@ export interface Song {
   album?: string;
   artist?: string;
   track?: number;
+  path?: string;
+  duration?: number;
   [k: string]: unknown;
 }
 
@@ -187,6 +189,10 @@ export class Subsonic {
     return (await this.request("getAlbum", { id })).album ?? {};
   }
 
+  async getSong(id: string): Promise<Song> {
+    return (await this.request("getSong", { id })).song ?? {};
+  }
+
   async findSong(title: string, album?: string, artist?: string): Promise<Song | null> {
     const res = await this.search3(title, 20, 50);
     return matchSong(asList(res.song), title, album, artist);
@@ -260,4 +266,10 @@ export function clientFromEnv(dotenvPath?: string): Subsonic {
     throw new SubsonicError("NAVIDROME_URL / NAVIDROME_USER / NAVIDROME_PASS not set (see .env.example)");
   }
   return new Subsonic({ baseUrl, user, password });
+}
+
+export function playlistUrlFromEnv(playlistId: string): string | undefined {
+  const baseUrl = process.env.NAVIDROME_URL;
+  if (!baseUrl) return undefined;
+  return `${baseUrl.replace(/\/+$/, "")}/app/#/playlist/${encodeURIComponent(playlistId)}/show`;
 }

@@ -14,6 +14,8 @@ export const DEFAULT_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", 
 
 const SEASON_HEADING = /^##\s+Season\s+(\d+)/i;
 const ACTIVE_SEASON = /Active season:\s*\*{0,2}(\d+)/i;
+const SEASON_PLAYLIST_ID = /^Season playlist ID:\s*(.+)\s*$/i;
+const SEASON_PLAYLIST_URL = /^Season playlist URL:\s*(.+)\s*$/i;
 const PLACEHOLDER_MARK = "no episodes yet";
 const EMPTY = "—";
 
@@ -28,6 +30,9 @@ export interface Row {
   status: string;
   dir: string;
   published: string;
+  playlistId: string;
+  playlistUrl: string;
+  compiledSongId: string;
   lineno: number; // 0-based index into the file's line list
 }
 
@@ -36,6 +41,15 @@ export interface AssignResult {
   episode: number;
   dir: string;
   action: "claimed" | "appended";
+}
+
+export interface PlaylistInfo {
+  playlistId: string;
+  playlistUrl: string;
+}
+
+export interface SeasonPlaylistInfo extends PlaylistInfo {
+  season: number;
 }
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
@@ -79,21 +93,39 @@ interface TableLoc {
   hasPlaceholder: boolean;
 }
 
-function locateTable(lines: string[], season: number): TableLoc {
+interface SeasonBounds {
+  startIdx: number;
+  endIdx: number;
+}
+
+function locateSeason(lines: string[], season: number): SeasonBounds {
   const masked = maskFences(lines);
-  let start = -1;
+  let startIdx = -1;
   for (let i = 0; i < masked.length; i++) {
     const m = masked[i]!.match(SEASON_HEADING);
     if (m && parseInt(m[1]!, 10) === season) {
-      start = i;
+      startIdx = i;
       break;
     }
   }
-  if (start === -1) throw new CatalogError(`Season ${season} not found in catalog`);
+  if (startIdx === -1) throw new CatalogError(`Season ${season} not found in catalog`);
+
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < masked.length; i++) {
+    if (SEASON_HEADING.test(masked[i]!)) {
+      endIdx = i;
+      break;
+    }
+  }
+  return { startIdx, endIdx };
+}
+
+function locateTable(lines: string[], season: number): TableLoc {
+  const masked = maskFences(lines);
+  const { startIdx, endIdx } = locateSeason(lines, season);
 
   let headerIdx = -1;
-  for (let i = start + 1; i < masked.length; i++) {
-    if (SEASON_HEADING.test(masked[i]!)) break;
+  for (let i = startIdx + 1; i < endIdx; i++) {
     if (isTableLine(masked[i]!) && isHeader(masked[i]!)) {
       headerIdx = i;
       break;
@@ -114,6 +146,21 @@ function locateTable(lines: string[], season: number): TableLoc {
   return { headerIdx, dataIndices, hasPlaceholder };
 }
 
+export function seasonPlaylistInfo(text: string, season: number): SeasonPlaylistInfo | null {
+  const lines = text.split("\n");
+  const { startIdx, endIdx } = locateSeason(lines, season);
+  let playlistId = EMPTY;
+  let playlistUrl = EMPTY;
+  for (let i = startIdx + 1; i < endIdx; i++) {
+    const id = lines[i]!.match(SEASON_PLAYLIST_ID);
+    if (id) playlistId = id[1]!.trim();
+    const url = lines[i]!.match(SEASON_PLAYLIST_URL);
+    if (url) playlistUrl = url[1]!.trim();
+  }
+  if (playlistId === EMPTY && playlistUrl === EMPTY) return null;
+  return { season, playlistId, playlistUrl };
+}
+
 export function read(path: string = DEFAULT_PATH): string {
   return readFileSync(path, "utf-8");
 }
@@ -131,11 +178,12 @@ export function rowsForSeason(text: string, season: number): Row[] {
   for (const idx of dataIndices) {
     if (isPlaceholder(lines[idx]!)) continue;
     const c = cells(lines[idx]!);
-    while (c.length < 7) c.push("");
+    while (c.length < 10) c.push(EMPTY);
     const ep = /^\d+$/.test(c[0]!) ? parseInt(c[0]!, 10) : null;
     out.push({
       season, ep, album: c[1]!, artist: c[2]!, host: c[3]!,
-      status: c[4]!, dir: c[5]!, published: c[6]!, lineno: idx,
+      status: c[4]!, dir: c[5]!, published: c[6]!,
+      playlistId: c[7]!, playlistUrl: c[8]!, compiledSongId: c[9]!, lineno: idx,
     });
   }
   return out;
@@ -162,8 +210,12 @@ export function nextPlanned(text: string, season: number): Row | null {
 }
 
 function formatRow(ep: number, album: string, artist: string, host: string,
-                   status: string, dir: string, published: string): string {
-  return `| ${pad2(ep)} | ${album} | ${artist} | ${host} | ${status} | ${dir} | ${published} |`;
+                   status: string, dir: string, published: string,
+                   playlistId = EMPTY, playlistUrl = EMPTY, compiledSongId = EMPTY): string {
+  return (
+    `| ${pad2(ep)} | ${album} | ${artist} | ${host} | ${status} | ${dir} | ${published} | ` +
+    `${playlistId} | ${playlistUrl} | ${compiledSongId} |`
+  );
 }
 
 /** Claim a matching `planned` row or append the next episode; set it in-production. */
@@ -207,10 +259,116 @@ export function setStatus(season: number, ep: number, status: string,
   for (const r of rowsForSeason(text, season)) {
     if (r.ep === ep) {
       const pub = published ?? r.published;
-      lines[r.lineno] = formatRow(ep, r.album, r.artist, r.host, status, r.dir, pub);
+      lines[r.lineno] = formatRow(
+        ep,
+        r.album,
+        r.artist,
+        r.host,
+        status,
+        r.dir,
+        pub,
+        r.playlistId,
+        r.playlistUrl,
+        r.compiledSongId,
+      );
       writeFileSync(path, lines.join("\n") + "\n", "utf-8");
       return;
     }
   }
   throw new CatalogError(`S${pad2(season)}E${pad2(ep)} not found in catalog`);
+}
+
+export function setEpisodePlaylist(
+  season: number,
+  ep: number,
+  playlistId: string,
+  playlistUrl: string = EMPTY,
+  path: string = DEFAULT_PATH,
+): void {
+  const text = readFileSync(path, "utf-8");
+  const lines = text.split("\n");
+  for (const r of rowsForSeason(text, season)) {
+    if (r.ep === ep) {
+      lines[r.lineno] = formatRow(
+        ep,
+        r.album,
+        r.artist,
+        r.host,
+        r.status,
+        r.dir,
+        r.published,
+        playlistId,
+        playlistUrl,
+        r.compiledSongId,
+      );
+      writeFileSync(path, lines.join("\n") + "\n", "utf-8");
+      return;
+    }
+  }
+  throw new CatalogError(`S${pad2(season)}E${pad2(ep)} not found in catalog`);
+}
+
+export function setEpisodeCompiledSong(
+  season: number,
+  ep: number,
+  compiledSongId: string,
+  path: string = DEFAULT_PATH,
+): void {
+  const text = readFileSync(path, "utf-8");
+  const lines = text.split("\n");
+  for (const r of rowsForSeason(text, season)) {
+    if (r.ep === ep) {
+      lines[r.lineno] = formatRow(
+        ep,
+        r.album,
+        r.artist,
+        r.host,
+        r.status,
+        r.dir,
+        r.published,
+        r.playlistId,
+        r.playlistUrl,
+        compiledSongId,
+      );
+      writeFileSync(path, lines.join("\n") + "\n", "utf-8");
+      return;
+    }
+  }
+  throw new CatalogError(`S${pad2(season)}E${pad2(ep)} not found in catalog`);
+}
+
+export function setSeasonPlaylist(
+  season: number,
+  playlistId: string,
+  playlistUrl: string = EMPTY,
+  path: string = DEFAULT_PATH,
+): void {
+  const text = readFileSync(path, "utf-8");
+  const lines = text.split("\n");
+  const { startIdx, endIdx } = locateSeason(lines, season);
+  const { headerIdx } = locateTable(lines, season);
+  let idIdx = -1;
+  let urlIdx = -1;
+
+  for (let i = startIdx + 1; i < endIdx; i++) {
+    if (SEASON_PLAYLIST_ID.test(lines[i]!)) idIdx = i;
+    if (SEASON_PLAYLIST_URL.test(lines[i]!)) urlIdx = i;
+  }
+
+  const idLine = `Season playlist ID: ${playlistId}`;
+  const urlLine = `Season playlist URL: ${playlistUrl}`;
+
+  if (idIdx !== -1) lines[idIdx] = idLine;
+  if (urlIdx !== -1) lines[urlIdx] = urlLine;
+  if (idIdx === -1 && urlIdx === -1) {
+    const insertAt = headerIdx;
+    const prefix = lines[insertAt - 1]?.trim() === "" ? [] : [""];
+    lines.splice(insertAt, 0, ...prefix, idLine, urlLine, "");
+  } else if (idIdx === -1) {
+    lines.splice(urlIdx, 0, idLine);
+  } else if (urlIdx === -1) {
+    lines.splice(idIdx + 1, 0, urlLine);
+  }
+
+  writeFileSync(path, lines.join("\n") + "\n", "utf-8");
 }

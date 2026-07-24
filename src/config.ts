@@ -41,6 +41,17 @@ export interface Config {
   nas: { sshHost: string; musicDir: string; local: boolean };
   /** The MCP HTTP server (src/mcp.ts). Port only — the bearer token stays env-only (secret). */
   mcp: { port: number };
+  /** Navidrome library path mapping: API-reported paths may differ from the pipeline host mount. */
+  navidrome: { musicRootNavidrome: string; musicRootPipeline: string };
+  /** Defaults for derived single-track episode artifacts. */
+  compiledEpisodes: {
+    artist: string;
+    album: string;
+    outputFormat: "m4a" | "mp3";
+    bitrate: string;
+    includeChapters: boolean;
+    outputSubdir: string;
+  };
   /**
    * Base directory the pipeline creates episode working dirs under (research.md, script.md,
    * audio/…). The tools own this path so a REMOTE orchestrator (Hermes, on another host) never
@@ -73,6 +84,15 @@ const DEFAULTS: Config = {
   nas: { sshHost: "root@100.110.0.9", musicDir: "/mnt/nas/music/subwave-documentaries", local: false },
   // MCP HTTP server port. Hermes (CTID 105) connects to it as a remote toolset over the LAN.
   mcp: { port: 8848 },
+  navidrome: { musicRootNavidrome: "/music", musicRootPipeline: "/mnt/nas/music" },
+  compiledEpisodes: {
+    artist: "SUB/WAVE Documentaries",
+    album: "SUB/WAVE Docs",
+    outputFormat: "m4a",
+    bitrate: "192k",
+    includeChapters: true,
+    outputSubdir: "SUB-WAVE Documentaries/SUB-WAVE Docs",
+  },
   // Episode working dirs are created under the repo root by default (where they've always lived).
   // DOCS_WORK_DIR overrides it if the service user can't write the repo dir on a given box.
   work: { dir: REPO_ROOT },
@@ -85,6 +105,8 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
   const el = raw.elevenlabs ?? {};
   const bg = raw.budget ?? {};
   const mcp = raw.mcp ?? {};
+  const nd = raw.navidrome ?? {};
+  const ce = raw.compiled_episodes ?? {};
 
   const voices: Record<string, VoiceConfig> = {};
   for (const [id, v] of Object.entries<any>(raw.voices ?? {})) {
@@ -114,6 +136,32 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
     },
     mcp: {
       port: Number(process.env.DOCS_MCP_PORT ?? mcp.port ?? DEFAULTS.mcp.port),
+    },
+    navidrome: {
+      musicRootNavidrome:
+        process.env.DOCS_NAVIDROME_MUSIC_ROOT_NAVIDROME ??
+        nd.music_root_navidrome ??
+        DEFAULTS.navidrome.musicRootNavidrome,
+      musicRootPipeline:
+        process.env.DOCS_NAVIDROME_MUSIC_ROOT_PIPELINE ??
+        nd.music_root_pipeline ??
+        DEFAULTS.navidrome.musicRootPipeline,
+    },
+    compiledEpisodes: {
+      artist: process.env.DOCS_COMPILED_EPISODES_ARTIST ?? ce.artist ?? DEFAULTS.compiledEpisodes.artist,
+      album: process.env.DOCS_COMPILED_EPISODES_ALBUM ?? ce.album ?? DEFAULTS.compiledEpisodes.album,
+      outputFormat: (process.env.DOCS_COMPILED_EPISODES_OUTPUT_FORMAT ??
+        ce.output_format ??
+        DEFAULTS.compiledEpisodes.outputFormat) as "m4a" | "mp3",
+      bitrate: process.env.DOCS_COMPILED_EPISODES_BITRATE ?? ce.bitrate ?? DEFAULTS.compiledEpisodes.bitrate,
+      includeChapters:
+        process.env.DOCS_COMPILED_EPISODES_INCLUDE_CHAPTERS != null
+          ? /^(1|true|yes|on)$/i.test(process.env.DOCS_COMPILED_EPISODES_INCLUDE_CHAPTERS)
+          : Boolean(ce.include_chapters ?? DEFAULTS.compiledEpisodes.includeChapters),
+      outputSubdir:
+        process.env.DOCS_COMPILED_EPISODES_OUTPUT_SUBDIR ??
+        ce.output_subdir ??
+        DEFAULTS.compiledEpisodes.outputSubdir,
     },
     work: {
       dir: process.env.DOCS_WORK_DIR ?? raw.work?.dir ?? DEFAULTS.work.dir,

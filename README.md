@@ -178,6 +178,9 @@ pnpm cli navidrome scan
 
 # Publishing
 pnpm cli publish path/to/rundown.json            # Build Navidrome playlist
+pnpm cli compile-episode path/to/rundown.json    # Build one long-form compiled track
+pnpm cli compile-playlist --playlist-id <id> --season 1 --episode 1  # Backfill by explicit playlist ID
+pnpm cli publish-compiled-season --season 1      # Playlist of compiled episode tracks
 
 # Other
 pnpm cli config                                  # Print resolved config
@@ -253,6 +256,7 @@ The pipeline integrates with Navidrome via its [Subsonic API](http://www.subsoni
 - **Read-only** for the agent (the music mount is `ro` on the homelab LXC)
 - Episode MP3s are ID3-tagged and delivered to the working directory; David manually moves them to the NAS
 - After a rescan, the agent resolves Subsonic IDs and creates the playlist in exact cue order
+- Playlist IDs, URLs, and compiled song IDs are recorded in local `seasons.md` so later steps do not hunt by playlist name
 
 See [`producer-guide.md`](./producer-guide.md#navidrome) for full details.
 

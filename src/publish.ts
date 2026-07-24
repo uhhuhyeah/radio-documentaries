@@ -7,16 +7,30 @@
 
 import { readFileSync } from "node:fs";
 
-import { clientFromEnv, songsOfAlbum } from "./navidrome";
+import { setEpisodePlaylist } from "./catalog";
+import { clientFromEnv, playlistUrlFromEnv, songsOfAlbum } from "./navidrome";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface PublishResult {
   playlistName: string;
   count: number;
   playlistId?: string;
+  playlistUrl?: string;
+  recordedInCatalog: boolean;
 }
 
-export async function publishEpisode(rundownPath: string, playlistName?: string): Promise<PublishResult> {
+export interface PublishOptions {
+  playlistName?: string;
+  recordCatalog?: boolean;
+  catalogPath?: string;
+}
+
+export async function publishEpisode(
+  rundownPath: string,
+  playlistNameOrOptions?: string | PublishOptions,
+): Promise<PublishResult> {
+  const opts: PublishOptions =
+    typeof playlistNameOrOptions === "string" ? { playlistName: playlistNameOrOptions } : (playlistNameOrOptions ?? {});
   const rundown: any = JSON.parse(readFileSync(rundownPath, "utf-8"));
   const client = clientFromEnv();
 
@@ -60,11 +74,19 @@ export async function publishEpisode(rundownPath: string, playlistName?: string)
     }
   }
 
-  const name = playlistName ?? `SUB/WAVE Docs · ${rundown.album}`;
+  const name = opts.playlistName ?? `SUB/WAVE Docs · ${rundown.album}`;
   // Republish is idempotent: drop any existing playlist of the same name first.
   for (const p of await client.getPlaylists()) {
     if (p?.name === name && p?.id) await client.deletePlaylist(String(p.id));
   }
   const pl = await client.createPlaylist(name, orderedIds);
-  return { playlistName: name, count: orderedIds.length, playlistId: pl?.id };
+  const playlistId = pl?.id ? String(pl.id) : undefined;
+  const playlistUrl = playlistId ? playlistUrlFromEnv(playlistId) : undefined;
+  const recordCatalog = opts.recordCatalog ?? true;
+  let recordedInCatalog = false;
+  if (recordCatalog && playlistId) {
+    setEpisodePlaylist(Number(rundown.season), Number(rundown.episode), playlistId, playlistUrl, opts.catalogPath);
+    recordedInCatalog = true;
+  }
+  return { playlistName: name, count: orderedIds.length, playlistId, playlistUrl, recordedInCatalog };
 }

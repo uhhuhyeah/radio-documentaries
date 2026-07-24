@@ -46,6 +46,22 @@ music_dir = "/mnt/nas/music/subwave-documentaries"
 [mcp]
 port = 8848
 
+# Navidrome path mapping for derived compiled tracks. `music_root_navidrome` is
+# the path as Navidrome reports it; `music_root_pipeline` is the same library as
+# mounted on the pipeline host.
+[navidrome]
+music_root_navidrome = "/music"
+music_root_pipeline = "/mnt/nas/music"
+
+# Single long-form episode artifacts derived from published cue playlists.
+[compiled_episodes]
+artist = "SUB/WAVE Documentaries"
+album = "SUB/WAVE Docs"
+output_format = "m4a"
+bitrate = "192k"
+include_chapters = true
+output_subdir = "SUB-WAVE Documentaries/SUB-WAVE Docs"
+
 # Where the pipeline creates episode working dirs (research.md, script.md, audio/…). The tools own
 # this path so a remote orchestrator (Hermes) never invents one. Defaults to the repo root; set it
 # (or DOCS_WORK_DIR) to a service-user-writable dir if the repo checkout isn't writable on a box.

@@ -8,6 +8,7 @@ import {
   statSync,
   writeFileSync,
   readFileSync,
+  readdirSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -232,13 +233,20 @@ function runFfmpeg(args: string[]): void {
 }
 
 async function resolvePlaylistSources(client: Subsonic, playlistId: string): Promise<{ playlistName: string; sources: SourceItem[] }> {
-  const playlist = await client.getPlaylist(playlistId);
-  const playlistName = String(playlist.name ?? playlistId);
+  return resolvePlaylistSourcesForEpisode(client, { playlistId });
+}
+
+async function resolvePlaylistSourcesForEpisode(
+  client: Subsonic,
+  opts: { playlistId: string; season?: number; episode?: number },
+): Promise<{ playlistName: string; sources: SourceItem[] }> {
+  const playlist = await client.getPlaylist(opts.playlistId);
+  const playlistName = String(playlist.name ?? opts.playlistId);
   const entries = asList(playlist.entry);
-  if (entries.length === 0) throw new Error(`playlist ${playlistId} has zero tracks`);
+  if (entries.length === 0) throw new Error(`playlist ${opts.playlistId} has zero tracks`);
 
   const sources: SourceItem[] = [];
-  for (const entry of entries) {
+  for (const [i, entry] of entries.entries()) {
     const id = entry?.id === undefined ? undefined : String(entry.id);
     let rawPath = entry?.path === undefined ? undefined : String(entry.path);
     if (!rawPath && id) {
@@ -247,16 +255,50 @@ async function resolvePlaylistSources(client: Subsonic, playlistId: string): Pro
     }
     if (!rawPath) throw new Error(`playlist entry '${entry?.title ?? id ?? "?"}' has no source path`);
     const mapped = mapNavidromePath(rawPath, config.navidrome.musicRootNavidrome, config.navidrome.musicRootPipeline);
-    assertPathUnder(mapped, [config.navidrome.musicRootPipeline]);
-    if (!existsSync(mapped)) throw new Error(`source file not found: ${mapped}`);
+    const resolvedPath = resolveExistingSourcePath(mapped, opts.season, opts.episode, i + 1);
     sources.push({
       id,
-      title: String(entry?.title ?? entry?.name ?? mapped),
-      path: mapped,
+      title: String(entry?.title ?? entry?.name ?? resolvedPath),
+      path: resolvedPath,
       durationSec: entry?.duration === undefined ? undefined : Number(entry.duration),
     });
   }
   return { playlistName, sources };
+}
+
+function resolveExistingSourcePath(mapped: string, season: number | undefined, episode: number | undefined, playlistIndex: number): string {
+  assertPathUnder(mapped, [config.navidrome.musicRootPipeline, config.nas.musicDir]);
+  if (existsSync(mapped)) return mapped;
+
+  const staged = season === undefined || episode === undefined
+    ? null
+    : findStagedEpisodeSource(config.nas.musicDir, season, episode, playlistIndex);
+  if (staged) return staged;
+
+  throw new Error(`source file not found: ${mapped}`);
+}
+
+export function stagedSegmentPrefix(season: number, episode: number, playlistIndex: number): string {
+  return `s${pad2(season)}e${pad2(episode)}_${pad2(playlistIndex)}_`;
+}
+
+export function matchStagedSegmentFilename(files: string[], season: number, episode: number, playlistIndex: number): string | null {
+  const prefix = stagedSegmentPrefix(season, episode, playlistIndex);
+  return files
+    .filter((f) => f.toLowerCase().startsWith(prefix) && f.toLowerCase().endsWith(".mp3"))
+    .sort()[0] ?? null;
+}
+
+function findStagedEpisodeSource(musicDir: string, season: number, episode: number, playlistIndex: number): string | null {
+  const row = rowsForSeason(readCatalog(), season).find((r) => r.ep === episode);
+  if (!row || !row.dir || row.dir === "—") return null;
+  const dir = join(musicDir, row.dir.toLowerCase());
+  if (!existsSync(dir)) return null;
+  const match = matchStagedSegmentFilename(readdirSync(dir), season, episode, playlistIndex);
+  if (!match) return null;
+  const path = join(dir, match);
+  assertPathUnder(path, [musicDir]);
+  return path;
 }
 
 function compileSources(
@@ -318,10 +360,17 @@ function compileSources(
 export async function compilePlaylistToTrack(opts: CompilePlaylistOptions): Promise<CompilePlaylistResult> {
   const client = clientFromEnv();
   const defaults = config.compiledEpisodes;
-  const { playlistName, sources } = await resolvePlaylistSources(client, opts.playlistId);
+  const inferredFromTitle = opts.title === undefined ? {} : inferEpisodeFromTitle(opts.title);
+  const initialSeason = opts.season ?? inferredFromTitle.season;
+  const initialEpisode = opts.episode ?? inferredFromTitle.episode;
+  const { playlistName, sources } = await resolvePlaylistSourcesForEpisode(client, {
+    playlistId: opts.playlistId,
+    season: initialSeason,
+    episode: initialEpisode,
+  });
   const inferred = inferEpisodeFromTitle(playlistName);
-  const season = opts.season ?? inferred.season;
-  const episode = opts.episode ?? inferred.episode;
+  const season = initialSeason ?? inferred.season;
+  const episode = initialEpisode ?? inferred.episode;
   const trackNumber = opts.trackNumber ?? episode;
   const outputFormat = opts.outputFormat ?? defaults.outputFormat;
   const includeChapters = opts.includeChapters ?? defaults.includeChapters;

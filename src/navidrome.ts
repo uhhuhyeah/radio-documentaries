@@ -32,6 +32,8 @@ export interface Song {
   album?: string;
   artist?: string;
   track?: number;
+  path?: string;
+  duration?: number;
   [k: string]: unknown;
 }
 
@@ -185,6 +187,10 @@ export class Subsonic {
 
   async getAlbum(id: string): Promise<Album> {
     return (await this.request("getAlbum", { id })).album ?? {};
+  }
+
+  async getSong(id: string): Promise<Song> {
+    return (await this.request("getSong", { id })).song ?? {};
   }
 
   async findSong(title: string, album?: string, artist?: string): Promise<Song | null> {

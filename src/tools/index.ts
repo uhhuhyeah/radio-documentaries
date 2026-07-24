@@ -17,6 +17,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 
 import * as budget from "../budget";
 import * as catalog from "../catalog";
+import { compilePlaylistToTrack, publishCompiledSeasonPlaylist } from "../compiled-episodes";
 import { config } from "../config";
 import { checkCredit } from "../credit";
 import { apiKeyFromEnv } from "../elevenlabs";
@@ -578,6 +579,59 @@ export const publishEpisodeTool = defineTool({
   },
 });
 
+export const compilePlaylistToTrackTool = defineTool({
+  name: "compile_playlist_to_track",
+  label: "Compile playlist to track",
+  description:
+    "Compile a known Navidrome playlist ID into one tagged long-form episode track. The playlist ID is " +
+    "an explicit input; do not search playlists by name. Writes the derived file under the configured " +
+    "music root, optionally rescans Navidrome, and records the compiled song ID in seasons.md when " +
+    "season/episode can be determined.",
+  parameters: Type.Object({
+    playlistId: Type.String(),
+    title: Type.Optional(Type.String()),
+    album: Type.Optional(Type.String()),
+    artist: Type.Optional(Type.String()),
+    albumArtist: Type.Optional(Type.String()),
+    season: Type.Optional(Type.Integer()),
+    episode: Type.Optional(Type.Integer()),
+    trackNumber: Type.Optional(Type.Integer()),
+    outputFormat: Type.Optional(Type.Union([Type.Literal("m4a"), Type.Literal("mp3")])),
+    includeChapters: Type.Optional(Type.Boolean()),
+    replace: Type.Optional(Type.Boolean()),
+    rescan: Type.Optional(Type.Boolean()),
+    wait: Type.Optional(Type.Boolean()),
+  }),
+  execute: async (_id, params) => {
+    const r = await compilePlaylistToTrack(params);
+    const found = r.navidromeSongId ? `; Navidrome song ${r.navidromeSongId}` : "";
+    const warnings = r.warnings.length ? `; warnings: ${r.warnings.join("; ")}` : "";
+    return result(
+      `compiled ${r.sourceCount} source track(s) into ${r.outputPath} (${Math.round(r.durationSec)}s, ${r.chapterCount} chapter(s))${found}${warnings}`,
+      r,
+    );
+  },
+});
+
+export const publishCompiledSeasonPlaylistTool = defineTool({
+  name: "publish_compiled_season_playlist",
+  label: "Publish compiled season playlist",
+  description:
+    "Create or replace the Navidrome playlist for a season's compiled episode tracks. Reads compiled " +
+    "song IDs from seasons.md, preserves episode order, and records the resulting season playlist ID/URL " +
+    "under the season heading.",
+  parameters: Type.Object({
+    season: Type.Integer(),
+    name: Type.Optional(Type.String()),
+    album: Type.Optional(Type.String()),
+    artist: Type.Optional(Type.String()),
+  }),
+  execute: async (_id, params) => {
+    const r = await publishCompiledSeasonPlaylist(params);
+    return result(`published compiled season playlist "${r.playlistName}" with ${r.trackCount} track(s)`, r);
+  },
+});
+
 export const stageAudioTool = defineTool({
   name: "stage_audio",
   label: "Stage audio to NAS",
@@ -632,4 +686,6 @@ export const documentaryTools = [
   waitScanTool,
   navidromeCreatePlaylistTool,
   publishEpisodeTool,
+  compilePlaylistToTrackTool,
+  publishCompiledSeasonPlaylistTool,
 ];

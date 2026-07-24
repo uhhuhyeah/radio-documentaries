@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Type } from "typebox";
 
 import { toolResult } from "../tools/util";
+import { servedTools } from "./server";
 import type { PiToolLike } from "./adapter";
 import { startMcpHttpServer } from "./server";
 
@@ -58,6 +59,12 @@ function connect(token?: string): Promise<Client> {
 }
 
 describe("startMcpHttpServer", () => {
+  it("serves compiled episode tools in the production toolset", () => {
+    const names = servedTools.map((t) => t.name);
+    expect(names).toContain("compile_playlist_to_track");
+    expect(names).toContain("publish_compiled_season_playlist");
+  });
+
   it("refuses to start without a token (fail closed)", async () => {
     await expect(startMcpHttpServer({ port: 0, token: "" })).rejects.toThrow(/fail closed/i);
   });

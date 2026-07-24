@@ -12,6 +12,7 @@ import {
   normalizeSourceFilenameForMatch,
   outputPathForTrack,
   sanitizeFilename,
+  sourceFilenameMatchKeys,
   stagedSegmentPrefix,
 } from "./compiled-episodes";
 
@@ -69,6 +70,8 @@ describe("compiled episode helpers", () => {
   it("matches sibling album files when Navidrome has a stale filename format", () => {
     expect(normalizeSourceFilenameForMatch("01-01 - DVD Menu-Garden Song.flac")).toBe("dvdmenugardensong");
     expect(normalizeSourceFilenameForMatch("1.01 DVD Menu-Garden Song.flac")).toBe("dvdmenugardensong");
+    expect(sourceFilenameMatchKeys("Jason Isbell and the 400 Unit - Weathervanes - 01 Death Wish.flac")).toContain("deathwish");
+    expect(sourceFilenameMatchKeys("Lorde_Melodrama_01_Green Light.flac")).toContain("greenlight");
     expect(
       matchSiblingSourceFilename(
         [
@@ -78,6 +81,15 @@ describe("compiled episode helpers", () => {
         "01-01 - DVD Menu-Garden Song.flac",
       ),
     ).toBe("1.01 DVD Menu-Garden Song.flac");
+    expect(matchSiblingSourceFilename(["04 The Hand That Feeds.flac"], "01-04 - The Hand That Feeds.flac")).toBe(
+      "04 The Hand That Feeds.flac",
+    );
+    expect(matchSiblingSourceFilename(["Jason Isbell and the 400 Unit - Weathervanes - 01 Death Wish.flac"], "01 - Death Wish.flac")).toBe(
+      "Jason Isbell and the 400 Unit - Weathervanes - 01 Death Wish.flac",
+    );
+    expect(matchSiblingSourceFilename(["Lorde_Melodrama_01_Green Light.flac"], "01-01 - Green Light.flac")).toBe(
+      "Lorde_Melodrama_01_Green Light.flac",
+    );
   });
 
   it("escapes concat manifest single quotes", () => {

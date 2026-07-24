@@ -6,8 +6,10 @@ import {
   ffmetadataText,
   inferEpisodeFromTitle,
   mapNavidromePath,
+  matchStagedSegmentFilename,
   outputPathForTrack,
   sanitizeFilename,
+  stagedSegmentPrefix,
 } from "./compiled-episodes";
 
 describe("compiled episode helpers", () => {
@@ -42,6 +44,23 @@ describe("compiled episode helpers", () => {
         "m4a",
       ),
     ).toBe("/mnt/nas/music/SUB-WAVE Documentaries/SUB-WAVE Docs/01 - SUB-WAVE Docs · S01E01 — Punisher (Making Of).m4a");
+  });
+
+  it("matches staged SUB/WAVE segment files by season episode and playlist slot", () => {
+    expect(stagedSegmentPrefix(1, 4, 2)).toBe("s01e04_02_");
+    expect(
+      matchStagedSegmentFilename(
+        [
+          "s01e04_01_intro.mp3",
+          "s01e04_02_part-1-green-light.mp3",
+          "cover.jpg",
+          "s01e04_02_part-1-green-light.wav",
+        ],
+        1,
+        4,
+        2,
+      ),
+    ).toBe("s01e04_02_part-1-green-light.mp3");
   });
 
   it("escapes concat manifest single quotes", () => {

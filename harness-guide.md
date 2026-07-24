@@ -405,7 +405,8 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
 7. budget_estimate(...) — do not exceed the cap without approval.
 8. render_episode(...) START → wait_render(...) until done.
 9. catalog_set_status(..., "recorded") → stage_audio(...).
-10. publish_episode(...) → catalog_set_status(..., "published").
+10. publish_episode(...) → compile_episode_track(...) → publish_compiled_season_playlist(...).
+11. catalog_set_status(..., "published") only after all publish artifacts succeed.
 
 RULES: Never revise for runtime. Never revise for UNSUPPORTED findings. Never rotate the
 Navidrome password. Hosts are only Cara or Jools. Stop and report — do not guess.

@@ -49,9 +49,17 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
    not re-charge for segments already rendered).
 8. stage_audio(workdir, rescan=true) copies the MP3s onto the NAS and triggers a Navidrome rescan
    (use replace=true when re-publishing an episode, to remove stale files).
-9. When prompted to publish (after stage_audio with rescan+wait):
-   publish_episode(rundownPath=<workdir>/rundown.json) builds the playlist in the exact cue order —
-   use it rather than assembling song ids by hand — then catalog_set_status(..., "published", <date>).
+9. When prompted to publish (after stage_audio with rescan+wait), complete ALL publish artifacts
+   before marking the episode published:
+   a. publish_episode(rundownPath=<workdir>/rundown.json) builds the source/cue playlist in the
+      exact cue order and records its playlist ID/URL in seasons.md — use it rather than assembling
+      song ids by hand.
+   b. compile_episode_track(rundownPath=<workdir>/rundown.json) creates the single long-form compiled
+      episode track. Confirm it returns navidromeSongId and records compiledSongId in seasons.md.
+   c. publish_compiled_season_playlist(season) updates the season playlist of compiled episode tracks.
+   d. Only after all three publish artifacts succeed, call catalog_set_status(..., "published", <date>).
+   If any publish/compile step errors or returns warnings that block lookup, stop and report; do not
+   mark the episode published.
 
 Rules: never invent album facts. Never rotate the Navidrome password. Hosts are only Cara or
 Jools. If something is ambiguous or a tool errors, stop and report — do not guess.

@@ -51,7 +51,7 @@ port = 8848
 # mounted on the pipeline host.
 [navidrome]
 music_root_navidrome = "/music"
-music_root_pipeline = "/mnt/nas/music"
+music_root_pipeline = "/mnt/music"
 
 # Single long-form episode artifacts derived from published cue playlists.
 [compiled_episodes]

@@ -144,7 +144,7 @@ The Producer will:
 5. Lint the script (enforce the format contract)
 6. Estimate the ElevenLabs credit budget
 7. (On approval) Render the spoken segments to tagged MP3s
-8. Wait for the manual NAS move, then build the Navidrome playlist
+8. Stage audio to the NAS and publish all Navidrome artifacts: detailed cue playlist, compiled episode track, and compiled season playlist
 
 ### Manual CLI
 

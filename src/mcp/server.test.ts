@@ -62,6 +62,7 @@ describe("startMcpHttpServer", () => {
   it("serves compiled episode tools in the production toolset", () => {
     const names = servedTools.map((t) => t.name);
     expect(names).toContain("compile_playlist_to_track");
+    expect(names).toContain("compile_episode_track");
     expect(names).toContain("publish_compiled_season_playlist");
   });
 

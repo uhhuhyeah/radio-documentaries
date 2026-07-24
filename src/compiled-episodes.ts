@@ -7,8 +7,9 @@ import {
   rmSync,
   statSync,
   writeFileSync,
+  readFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import { config } from "./config";
@@ -52,6 +53,15 @@ export interface CompilePlaylistResult {
   navidromeAlbumId?: string;
   navidromeSongId?: string;
   warnings: string[];
+}
+
+export interface CompileEpisodeTrackOptions {
+  rundownPath: string;
+  outputFormat?: "m4a" | "mp3";
+  includeChapters?: boolean;
+  replace?: boolean;
+  rescan?: boolean;
+  wait?: boolean;
 }
 
 export interface PublishCompiledSeasonPlaylistOptions {
@@ -269,7 +279,7 @@ function compileSources(
   mkdirSync(dirname(outputPath), { recursive: true });
   const scratch = mkdtempSync(join(tmpdir(), "subwave-compile-"));
   const tempAudio = join(scratch, `audio.${outputFormat}`);
-  const tempFinal = join(dirname(outputPath), `.${Date.now()}-${sanitizeFilename(outputPath.split("/").pop() ?? "compiled")}.tmp.${outputFormat}`);
+  const tempFinal = join(dirname(outputPath), `.${Date.now()}-${sanitizeFilename(basename(outputPath))}.tmp.${outputFormat}`);
   try {
     const durations = sources.map((s) => ({ ...s, durationSec: s.durationSec && s.durationSec > 0 ? s.durationSec : ffprobeDuration(s.path) }));
     const expectedDuration = durations.reduce((sum, s) => sum + s.durationSec, 0);
@@ -374,6 +384,38 @@ export async function compilePlaylistToTrack(opts: CompilePlaylistOptions): Prom
     navidromeSongId,
     warnings,
   };
+}
+
+export async function compileEpisodeTrack(opts: CompileEpisodeTrackOptions): Promise<CompilePlaylistResult> {
+  const rundown = JSON.parse(readFileSync(opts.rundownPath, "utf-8")) as {
+    season?: number;
+    episode?: number;
+    album?: string;
+  };
+  const season = Number(rundown.season);
+  const episode = Number(rundown.episode);
+  if (!Number.isInteger(season) || !Number.isInteger(episode)) {
+    throw new Error(`rundown lacks numeric season/episode: ${opts.rundownPath}`);
+  }
+
+  const row = rowsForSeason(readCatalog(), season).find((r) => r.ep === episode);
+  if (!row) throw new Error(`S${pad2(season)}E${pad2(episode)} not found in seasons.md`);
+  if (!row.playlistId || row.playlistId === "—") {
+    throw new Error(`S${pad2(season)}E${pad2(episode)} has no Playlist ID recorded in seasons.md`);
+  }
+
+  return compilePlaylistToTrack({
+    playlistId: row.playlistId,
+    title: `SUB/WAVE Docs · ${rundown.album ?? `S${pad2(season)}E${pad2(episode)}`}`,
+    season,
+    episode,
+    trackNumber: episode,
+    outputFormat: opts.outputFormat,
+    includeChapters: opts.includeChapters,
+    replace: opts.replace,
+    rescan: opts.rescan,
+    wait: opts.wait,
+  });
 }
 
 function findCompiledSong(songs: Song[], title: string, trackNumber: number | undefined): Song | null {

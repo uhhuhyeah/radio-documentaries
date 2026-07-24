@@ -17,7 +17,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 
 import * as budget from "../budget";
 import * as catalog from "../catalog";
-import { compilePlaylistToTrack, publishCompiledSeasonPlaylist } from "../compiled-episodes";
+import { compileEpisodeTrack, compilePlaylistToTrack, publishCompiledSeasonPlaylist } from "../compiled-episodes";
 import { config } from "../config";
 import { checkCredit } from "../credit";
 import { apiKeyFromEnv } from "../elevenlabs";
@@ -613,6 +613,32 @@ export const compilePlaylistToTrackTool = defineTool({
   },
 });
 
+export const compileEpisodeTrackTool = defineTool({
+  name: "compile_episode_track",
+  label: "Compile episode track",
+  description:
+    "Compile a published episode into one long-form track from its rundown.json. This reads season/episode " +
+    "from the rundown, then uses the episode Playlist ID recorded in seasons.md; it does not hunt for " +
+    "playlists by name.",
+  parameters: Type.Object({
+    rundownPath: Type.String(),
+    outputFormat: Type.Optional(Type.Union([Type.Literal("m4a"), Type.Literal("mp3")])),
+    includeChapters: Type.Optional(Type.Boolean()),
+    replace: Type.Optional(Type.Boolean()),
+    rescan: Type.Optional(Type.Boolean()),
+    wait: Type.Optional(Type.Boolean()),
+  }),
+  execute: async (_id, params) => {
+    const r = await compileEpisodeTrack(params);
+    const found = r.navidromeSongId ? `; Navidrome song ${r.navidromeSongId}` : "";
+    const warnings = r.warnings.length ? `; warnings: ${r.warnings.join("; ")}` : "";
+    return result(
+      `compiled episode ${r.title} into ${r.outputPath} (${Math.round(r.durationSec)}s, ${r.chapterCount} chapter(s))${found}${warnings}`,
+      r,
+    );
+  },
+});
+
 export const publishCompiledSeasonPlaylistTool = defineTool({
   name: "publish_compiled_season_playlist",
   label: "Publish compiled season playlist",
@@ -687,5 +713,6 @@ export const documentaryTools = [
   navidromeCreatePlaylistTool,
   publishEpisodeTool,
   compilePlaylistToTrackTool,
+  compileEpisodeTrackTool,
   publishCompiledSeasonPlaylistTool,
 ];

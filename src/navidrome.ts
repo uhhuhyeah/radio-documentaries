@@ -261,3 +261,9 @@ export function clientFromEnv(dotenvPath?: string): Subsonic {
   }
   return new Subsonic({ baseUrl, user, password });
 }
+
+export function playlistUrlFromEnv(playlistId: string): string | undefined {
+  const baseUrl = process.env.NAVIDROME_URL;
+  if (!baseUrl) return undefined;
+  return `${baseUrl.replace(/\/+$/, "")}/app/#/playlist/${encodeURIComponent(playlistId)}/show`;
+}

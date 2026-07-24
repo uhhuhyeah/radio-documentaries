@@ -16,7 +16,7 @@ The authoritative index of every documentary season and episode. The **Producer 
 | `planned` | Queued for a season, not started (used for season planning). No dir yet. |
 | `in-production` | Working dir created; research/script/audio underway. |
 | `recorded` | Audio delivered to the working dir; awaiting a manual move to the NAS + rescan. |
-| `published` | Navidrome playlist built and live. |
+| `published` | Navidrome playlist built, recorded in this catalog, and live. |
 
 ---
 
@@ -29,7 +29,7 @@ On a new trigger (e.g. *"Making of Punisher by Phoebe Bridgers, Jools to host"*)
    - If a `planned` row in that season matches the album/artist → **claim it**: set Status `in-production`, fill Dir. (If the trigger's host differs from the planned host, the **trigger wins** — update the Host cell.)
    - Otherwise → **new episode**: Ep = (highest Ep in that season) + 1. Append a row, Status `in-production`.
 3. **Name the working dir** `S{season:02}E{ep:02}-<album-slug>` to match the Dir cell (e.g. `S01E01-punisher`).
-4. **Advance Status** as the episode progresses: `in-production` → `recorded` (audio delivered) → `published` (playlist built). Fill the **Published** date (YYYY-MM-DD) when the playlist goes live.
+4. **Advance Status** as the episode progresses: `in-production` → `recorded` (audio delivered) → `published` (playlist built). Fill the **Published** date (YYYY-MM-DD), **Playlist ID**, and **Playlist URL** when the playlist goes live.
 5. **Never renumber.** Once assigned, an episode number is permanent.
 
 **To plan a season:** pre-add `planned` rows (Ep numbers, albums, artists, intended hosts) before any production. Leave Dir/Published as `—`. Production later claims each planned row in step 2.
@@ -39,16 +39,22 @@ Format reference (illustrative — not live episodes):
 ```
 ## Season 1 — <optional theme>
 
-| Ep | Album    | Artist          | Host  | Status       | Dir              | Published  |
-| -- | -------- | --------------- | ----- | ------------ | ---------------- | ---------- |
-| 01 | Punisher | Phoebe Bridgers | Jools | published    | S01E01-punisher  | 2026-07-20 |
-| 02 | Sound Ancestors | Madlib   | Jools | planned      | —                | —          |
+Season playlist ID: —
+Season playlist URL: —
+
+| Ep | Album    | Artist          | Host  | Status       | Dir              | Published  | Playlist ID | Playlist URL | Compiled Song ID |
+| -- | -------- | --------------- | ----- | ------------ | ---------------- | ---------- | ----------- | ------------ | ---------------- |
+| 01 | Punisher | Phoebe Bridgers | Jools | published    | S01E01-punisher  | 2026-07-20 | abc123 | http://navidrome.example/app/#/playlist/abc123/show | song123 |
+| 02 | Sound Ancestors | Madlib   | Jools | planned      | —                | —          | — | — | — |
 ```
 
 ---
 
 ## Season 1
 
-| Ep | Album | Artist | Host | Status | Dir | Published |
-| -- | ----- | ------ | ---- | ------ | --- | --------- |
-| *(no episodes yet — the first production becomes Ep 01)* | | | | | | |
+Season playlist ID: —
+Season playlist URL: —
+
+| Ep | Album | Artist | Host | Status | Dir | Published | Playlist ID | Playlist URL | Compiled Song ID |
+| -- | ----- | ------ | ---- | ------ | --- | --------- | ----------- | ------------ | ---------------- |
+| *(no episodes yet — the first production becomes Ep 01)* | | | | | | | | | |

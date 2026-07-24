@@ -266,6 +266,9 @@ async function main(): Promise<number> {
     try {
       const r = await publishEpisode(sub, flag([...rest], "name"));
       console.log(`created playlist "${r.playlistName}" with ${r.count} tracks`);
+      if (r.playlistId) console.log(`playlist id: ${r.playlistId}`);
+      if (r.playlistUrl) console.log(`playlist url: ${r.playlistUrl}`);
+      console.log(`recorded in catalog: ${r.recordedInCatalog ? "yes" : "no"}`);
       return 0;
     } catch (e) {
       console.error(`publish error: ${String(e)}`);

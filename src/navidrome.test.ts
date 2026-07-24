@@ -83,6 +83,16 @@ describe("loadDotenv", () => {
   });
 });
 
+describe("playlistUrlFromEnv", () => {
+  it("builds a Navidrome playlist URL from NAVIDROME_URL", () => {
+    const prev = process.env.NAVIDROME_URL;
+    process.env.NAVIDROME_URL = "http://navidrome.local/";
+    expect(nd.playlistUrlFromEnv("abc 123")).toBe("http://navidrome.local/app/#/playlist/abc%20123/show");
+    if (prev === undefined) delete process.env.NAVIDROME_URL;
+    else process.env.NAVIDROME_URL = prev;
+  });
+});
+
 describe("scanPollDecision", () => {
   const TIMEOUT = 120_000;
 

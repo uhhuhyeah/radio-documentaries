@@ -71,6 +71,7 @@ describe("read", () => {
     expect(rows[0]!.album).toBe("Real One");
     expect(rows[0]!.ep).toBe(1);
     expect(rows[0]!.status).toBe("published");
+    expect(rows[0]!.playlistId).toBe("—");
   });
 
   it("missing season throws", () => {
@@ -166,6 +167,45 @@ describe("setStatus", () => {
   it("throws for a missing episode", () => {
     const p = tmpCatalog();
     expect(() => catalog.setStatus(2, 99, "published", undefined, p)).toThrow(catalog.CatalogError);
+  });
+});
+
+describe("playlist metadata", () => {
+  it("records episode playlist fields on old seven-column rows", () => {
+    const p = tmpCatalog();
+    catalog.setEpisodePlaylist(2, 1, "pl-123", "http://nav/app/#/playlist/pl-123/show", p);
+    const row = catalog.rowsForSeason(catalog.read(p), 2)[0]!;
+    expect(row.playlistId).toBe("pl-123");
+    expect(row.playlistUrl).toBe("http://nav/app/#/playlist/pl-123/show");
+    expect(row.compiledSongId).toBe("—");
+    expect(catalog.read(p)).toContain("| 01 | Real One | Someone | Jools | published | S02E01-real-one | 2026-01-01 | pl-123 |");
+  });
+
+  it("records compiled song id without dropping playlist fields", () => {
+    const p = tmpCatalog();
+    catalog.setEpisodePlaylist(2, 1, "pl-123", "url", p);
+    catalog.setEpisodeCompiledSong(2, 1, "song-456", p);
+    const row = catalog.rowsForSeason(catalog.read(p), 2)[0]!;
+    expect(row.playlistId).toBe("pl-123");
+    expect(row.playlistUrl).toBe("url");
+    expect(row.compiledSongId).toBe("song-456");
+  });
+
+  it("inserts and updates season playlist metadata before the table", () => {
+    const p = tmpCatalog();
+    catalog.setSeasonPlaylist(2, "season-pl", "season-url", p);
+    expect(catalog.seasonPlaylistInfo(catalog.read(p), 2)).toEqual({
+      season: 2,
+      playlistId: "season-pl",
+      playlistUrl: "season-url",
+    });
+
+    catalog.setSeasonPlaylist(2, "season-pl-2", "season-url-2", p);
+    const text = catalog.read(p);
+    expect(text.match(/Season playlist ID:/g)).toHaveLength(1);
+    expect(catalog.seasonPlaylistInfo(text, 2)?.playlistId).toBe("season-pl-2");
+    const season2 = text.split("## Season 2")[1]!;
+    expect(season2.indexOf("Season playlist ID:")).toBeLessThan(season2.indexOf("| Ep |"));
   });
 });
 

@@ -182,6 +182,43 @@ export const catalogSetStatusTool = defineTool({
   },
 });
 
+export const catalogSetEpisodePlaylistTool = defineTool({
+  name: "catalog_set_episode_playlist",
+  label: "Catalog: set episode playlist",
+  description:
+    "Record the Navidrome source playlist ID/URL for one episode in seasons.md. Use after publish_episode " +
+    "or during backfill when the playlist ID/URL is known; this avoids later playlist hunting.",
+  parameters: Type.Object({
+    season: Type.Integer(),
+    episode: Type.Integer(),
+    playlistId: Type.String(),
+    playlistUrl: Type.Optional(Type.String()),
+  }),
+  execute: async (_id, params) => {
+    catalog.setEpisodePlaylist(params.season, params.episode, params.playlistId, params.playlistUrl);
+    return result(`S${String(params.season).padStart(2, "0")}E${String(params.episode).padStart(2, "0")} playlist recorded`, {
+      ok: true,
+    });
+  },
+});
+
+export const catalogSetSeasonPlaylistTool = defineTool({
+  name: "catalog_set_season_playlist",
+  label: "Catalog: set season playlist",
+  description:
+    "Record the Navidrome compiled-season playlist ID/URL under the season heading in seasons.md. Use " +
+    "after publish_compiled_season_playlist or during backfill when the playlist ID/URL is known.",
+  parameters: Type.Object({
+    season: Type.Integer(),
+    playlistId: Type.String(),
+    playlistUrl: Type.Optional(Type.String()),
+  }),
+  execute: async (_id, params) => {
+    catalog.setSeasonPlaylist(params.season, params.playlistId, params.playlistUrl);
+    return result(`Season ${params.season} playlist recorded`, { ok: true });
+  },
+});
+
 // --- lint / budget -----------------------------------------------------------
 
 export const lintScriptTool = defineTool({
@@ -572,6 +609,8 @@ export const documentaryTools = [
   catalogListTool,
   catalogAssignTool,
   catalogSetStatusTool,
+  catalogSetEpisodePlaylistTool,
+  catalogSetSeasonPlaylistTool,
   researchAlbumTool,
   waitResearchTool,
   researchStatusTool,

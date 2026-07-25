@@ -301,17 +301,22 @@ function resolveExistingSourcePath(mappedCandidates: string[], season: number | 
     if (existsSync(mapped)) return mapped;
   }
 
-  const staged = season === undefined || episode === undefined
-    ? null
-    : findStagedEpisodeSource(config.nas.musicDir, season, episode, playlistIndex);
-  if (staged) return staged;
-
   for (const mapped of mappedCandidates) {
     const sibling = findSiblingSource(mapped);
     if (sibling) return sibling;
   }
 
+  const staged = season === undefined || episode === undefined
+    ? null
+    : findStagedEpisodeSourceForCandidates(config.nas.musicDir, season, episode, playlistIndex, mappedCandidates);
+  if (staged) return staged;
+
   throw new Error(`source file not found: ${mappedCandidates[0]}`);
+}
+
+export function looksLikeSubwaveDocumentaryPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.includes("sub_wave documentaries") || lower.includes("sub-wave documentaries") || lower.includes("subwave-documentaries");
 }
 
 export function stagedSegmentPrefix(season: number, episode: number, playlistIndex: number): string {
@@ -335,6 +340,17 @@ function findStagedEpisodeSource(musicDir: string, season: number, episode: numb
   const path = join(dir, match);
   assertPathUnder(path, [musicDir]);
   return path;
+}
+
+function findStagedEpisodeSourceForCandidates(
+  musicDir: string,
+  season: number,
+  episode: number,
+  playlistIndex: number,
+  mappedCandidates: string[],
+): string | null {
+  if (!mappedCandidates.some(looksLikeSubwaveDocumentaryPath)) return null;
+  return findStagedEpisodeSource(musicDir, season, episode, playlistIndex);
 }
 
 export function normalizeSourceFilenameForMatch(filename: string): string {

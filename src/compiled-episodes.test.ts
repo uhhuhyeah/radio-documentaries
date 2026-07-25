@@ -6,6 +6,7 @@ import {
   ffmpegMetadataArgs,
   ffmetadataText,
   inferEpisodeFromTitle,
+  looksLikeSubwaveDocumentaryPath,
   mapNavidromePath,
   matchSiblingSourceFilename,
   matchStagedSegmentFilename,
@@ -65,6 +66,13 @@ describe("compiled episode helpers", () => {
         2,
       ),
     ).toBe("s01e04_02_part-1-green-light.mp3");
+  });
+
+  it("only classifies SUB/WAVE documentary paths as staged segment candidates", () => {
+    expect(looksLikeSubwaveDocumentaryPath("/mnt/music/SUB_WAVE Documentaries/S01E01 — Punisher/01 - intro.mp3")).toBe(true);
+    expect(looksLikeSubwaveDocumentaryPath("/mnt/music/subwave-documentaries/s01e01-punisher/s01e01_01_intro.mp3")).toBe(true);
+    expect(looksLikeSubwaveDocumentaryPath("/mnt/music/Lorde/Melodrama/01-01 - Green Light.flac")).toBe(false);
+    expect(looksLikeSubwaveDocumentaryPath("/mnt/music/Nine Inch Nails/With Teeth/01-04 - The Hand That Feeds.flac")).toBe(false);
   });
 
   it("matches sibling album files when Navidrome has a stale filename format", () => {

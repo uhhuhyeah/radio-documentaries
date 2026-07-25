@@ -53,6 +53,8 @@ export interface CompilePlaylistResult {
   trackNumber?: number;
   navidromeAlbumId?: string;
   navidromeSongId?: string;
+  coverArtSourcePath?: string;
+  coverArtEmbedded: boolean;
   sourceManifest: SourceManifestItem[];
   warnings: string[];
 }
@@ -271,6 +273,15 @@ function runFfmpeg(args: string[]): void {
   execFileSync("ffmpeg", ["-hide_banner", "-y", ...args], { stdio: "inherit" });
 }
 
+function tryRunFfmpeg(args: string[]): boolean {
+  try {
+    execFileSync("ffmpeg", ["-hide_banner", "-y", ...args], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function resolvePlaylistSources(client: Subsonic, playlistId: string): Promise<{ playlistName: string; sources: SourceItem[] }> {
   return resolvePlaylistSourcesForEpisode(client, { playlistId });
 }
@@ -333,6 +344,10 @@ function resolveExistingSourcePath(mappedCandidates: string[], season: number | 
 export function looksLikeSubwaveDocumentaryPath(path: string): boolean {
   const lower = path.toLowerCase();
   return lower.includes("sub_wave documentaries") || lower.includes("sub-wave documentaries") || lower.includes("subwave-documentaries");
+}
+
+export function coverArtSourcePath(sources: { path: string }[]): string | undefined {
+  return sources.find((s) => !looksLikeSubwaveDocumentaryPath(s.path))?.path ?? sources[0]?.path;
 }
 
 export function stagedSegmentPrefix(season: number, episode: number, playlistIndex: number): string {
@@ -428,12 +443,13 @@ function compileSources(
   bitrate: string,
   includeChapters: boolean,
   replace: boolean,
-): { durationSec: number; chapterCount: number } {
+): { durationSec: number; chapterCount: number; coverArtSourcePath?: string; coverArtEmbedded: boolean; warnings: string[] } {
   if (existsSync(outputPath) && !replace) throw new Error(`output already exists: ${outputPath}`);
   mkdirSync(dirname(outputPath), { recursive: true });
   const scratch = mkdtempSync(join(tmpdir(), "subwave-compile-"));
   const tempAudio = join(scratch, `audio.${outputFormat}`);
   const tempFinal = join(dirname(outputPath), `.${Date.now()}-${sanitizeFilename(basename(outputPath))}.tmp.${outputFormat}`);
+  const warnings: string[] = [];
   try {
     const durations = sources.map((s) => ({ ...s, durationSec: s.durationSec && s.durationSec > 0 ? s.durationSec : ffprobeDuration(s.path) }));
     const expectedDuration = durations.reduce((sum, s) => sum + s.durationSec, 0);
@@ -456,11 +472,10 @@ function compileSources(
     const taggedMetadata = { ...metadata, genre: DEFAULT_GENRE, comment: DEFAULT_COMMENT };
     const metadataPath = join(scratch, "metadata.ffmeta");
     writeFileSync(metadataPath, ffmetadataText(taggedMetadata, chapters), "utf-8");
-    const muxArgs =
-      outputFormat === "m4a"
-        ? ["-i", tempAudio, "-i", metadataPath, "-map", "0:a", "-map_chapters", "1", ...ffmpegMetadataArgs(taggedMetadata), "-c", "copy", tempFinal]
-        : ["-i", tempAudio, "-i", metadataPath, "-map", "0:a", "-map_metadata", "1", "-map_chapters", "1", ...ffmpegMetadataArgs(taggedMetadata), "-c", "copy", tempFinal];
-    runFfmpeg(muxArgs);
+    const artSource = coverArtSourcePath(sources);
+    const coverPath = artSource ? extractCoverArt(artSource, scratch) : undefined;
+    if (artSource && !coverPath) warnings.push(`cover art was not embedded; no readable embedded image found in ${artSource}`);
+    runFfmpeg(muxArgs(outputFormat, tempAudio, metadataPath, taggedMetadata, tempFinal, coverPath));
 
     const actualDuration = ffprobeDuration(tempFinal);
     const tolerance = Math.max(2, expectedDuration * 0.005);
@@ -472,11 +487,73 @@ function compileSources(
     if (statSync(tempFinal).size < MIN_OUTPUT_BYTES) throw new Error(`compiled output is implausibly small: ${tempFinal}`);
     validateFfprobeReadable(tempFinal);
     renameSync(tempFinal, outputPath);
-    return { durationSec: actualDuration, chapterCount: chapters.length };
+    return {
+      durationSec: actualDuration,
+      chapterCount: chapters.length,
+      coverArtSourcePath: artSource,
+      coverArtEmbedded: coverPath !== undefined,
+      warnings,
+    };
   } finally {
     if (existsSync(tempFinal)) rmSync(tempFinal, { force: true });
     rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+function extractCoverArt(sourcePath: string, scratch: string): string | undefined {
+  const coverPath = join(scratch, "cover.jpg");
+  const ok = tryRunFfmpeg([
+    "-i",
+    sourcePath,
+    "-map",
+    "0:v:0",
+    "-frames:v",
+    "1",
+    "-q:v",
+    "2",
+    coverPath,
+  ]);
+  return ok && existsSync(coverPath) && statSync(coverPath).size > 0 ? coverPath : undefined;
+}
+
+export function muxArgs(
+  outputFormat: "m4a" | "mp3",
+  tempAudio: string,
+  metadataPath: string,
+  metadata: {
+    title: string;
+    artist: string;
+    albumArtist: string;
+    album: string;
+    trackNumber?: number;
+    discNumber?: number;
+    genre?: string;
+    comment?: string;
+  },
+  tempFinal: string,
+  coverPath?: string,
+): string[] {
+  const args = ["-i", tempAudio, "-i", metadataPath];
+  if (coverPath) args.push("-i", coverPath);
+
+  args.push("-map", "0:a");
+  if (coverPath) args.push("-map", "2:v");
+  if (outputFormat === "mp3") args.push("-map_metadata", "1");
+  args.push("-map_chapters", "1", ...ffmpegMetadataArgs(metadata), "-c:a", "copy");
+  if (coverPath) {
+    args.push(
+      "-c:v",
+      "mjpeg",
+      "-disposition:v:0",
+      "attached_pic",
+      "-metadata:s:v",
+      "title=Album cover",
+      "-metadata:s:v",
+      "comment=Cover (front)",
+    );
+  }
+  args.push(tempFinal);
+  return args;
 }
 
 export async function compilePlaylistToTrack(opts: CompilePlaylistOptions): Promise<CompilePlaylistResult> {
@@ -519,7 +596,7 @@ export async function compilePlaylistToTrack(opts: CompilePlaylistOptions): Prom
 
   let navidromeAlbumId: string | undefined;
   let navidromeSongId: string | undefined;
-  const warnings: string[] = [];
+  const warnings: string[] = [...compiled.warnings];
   if (opts.rescan ?? true) {
     await client.startScan();
     if (opts.wait ?? true) await waitForScan(client);
@@ -553,6 +630,8 @@ export async function compilePlaylistToTrack(opts: CompilePlaylistOptions): Prom
     trackNumber,
     navidromeAlbumId,
     navidromeSongId,
+    coverArtSourcePath: compiled.coverArtSourcePath,
+    coverArtEmbedded: compiled.coverArtEmbedded,
     sourceManifest: sourceManifest(sources),
     warnings,
   };

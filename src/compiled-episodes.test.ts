@@ -4,6 +4,7 @@ import {
   chaptersFromSources,
   concatFilterGraph,
   concatManifestLine,
+  coverArtSourcePath,
   ffmpegMetadataArgs,
   ffmetadataText,
   inferEpisodeFromTitle,
@@ -11,6 +12,7 @@ import {
   mapNavidromePath,
   matchSiblingSourceFilename,
   matchStagedSegmentFilename,
+  muxArgs,
   normalizeSourceFilenameForMatch,
   outputPathForTrack,
   sanitizeFilename,
@@ -110,6 +112,24 @@ describe("compiled episode helpers", () => {
     expect(() => concatFilterGraph(0)).toThrow(/at least one source/);
   });
 
+  it("uses the first non-documentary playlist source for compiled episode artwork", () => {
+    expect(
+      coverArtSourcePath([
+        { path: "/mnt/music/subwave-documentaries/s01e04-melodrama/s01e04_01_intro.mp3" },
+        { path: "/mnt/music/subwave-documentaries/s01e04-melodrama/s01e04_02_part-1-green-light.mp3" },
+        { path: "/mnt/music/Lorde/Melodrama/Lorde_Melodrama_01_Green Light.flac" },
+      ]),
+    ).toBe("/mnt/music/Lorde/Melodrama/Lorde_Melodrama_01_Green Light.flac");
+  });
+
+  it("falls back to the first source for artwork when a playlist has no album reference tracks", () => {
+    expect(
+      coverArtSourcePath([
+        { path: "/mnt/music/subwave-documentaries/s01e04-melodrama/s01e04_01_intro.mp3" },
+      ]),
+    ).toBe("/mnt/music/subwave-documentaries/s01e04-melodrama/s01e04_01_intro.mp3");
+  });
+
   it("builds cumulative millisecond chapters", () => {
     expect(
       chaptersFromSources([
@@ -156,5 +176,29 @@ describe("compiled episode helpers", () => {
     expect(args).toContain("track=1");
     expect(args).not.toContain("-movflags");
     expect(args).not.toContain("use_metadata_tags");
+  });
+
+  it("builds mux args that attach cover art without re-encoding compiled audio", () => {
+    const args = muxArgs(
+      "m4a",
+      "/tmp/audio.m4a",
+      "/tmp/metadata.ffmeta",
+      {
+        title: "SUB/WAVE Docs · S01E04 — Melodrama (Making Of)",
+        artist: "SUB/WAVE Documentaries",
+        albumArtist: "SUB/WAVE Documentaries",
+        album: "SUB/WAVE Docs",
+        trackNumber: 4,
+      },
+      "/tmp/final.m4a",
+      "/tmp/cover.jpg",
+    );
+    expect(args).toContain("-map");
+    expect(args).toContain("2:v");
+    expect(args).toContain("-c:a");
+    expect(args).toContain("copy");
+    expect(args).toContain("-c:v");
+    expect(args).toContain("mjpeg");
+    expect(args).toContain("attached_pic");
   });
 });

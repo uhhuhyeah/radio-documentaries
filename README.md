@@ -2,7 +2,7 @@
 
 **LLM-powered "making of" album documentaries** — an automated production pipeline that researches, scripts, voices (via ElevenLabs TTS), and publishes radio-show-style episodes into a self-hosted [Navidrome](https://www.navidrome.org/) music library.
 
-Part of the [SUB/WAVE](https://github.com/uhhuhyeah/subwave-config) homelab AI-DJ ecosystem. Each episode is a deep dive into a single album, presented in-character by one of the station's DJ personas (Cara or Jools), with 3–5 full-length reference tracks from the album interleaved throughout — just like a real radio documentary.
+Part of the [SUB/WAVE](https://github.com/uhhuhyeah/subwave-config) homelab AI-DJ ecosystem. Each episode is a deep dive into a single album, presented in-character by one of the station's DJ personas (Cara, Jools or Hannah), with 3–5 full-length reference tracks from the album interleaved throughout — just like a real radio documentary.
 
 ## Overview
 
@@ -122,6 +122,10 @@ speed = 1.1
 [voices.p_jools]
 voice_id = "1BUhH8aaMvGMUdGAmWVM"                 # "Alyx" — Jools's voice
 speed = 1.0
+
+[voices.p_hannah]
+voice_id = "cvpTJfe9LINpHIOmB2Hp"                 # "Charlotte" — Hannah's voice
+speed = 1.0
 ```
 
 Environment variables (`DOCS_RESEARCH_MODEL`, `DOCS_WRITE_MODEL`, `DOCS_PRODUCER_MODEL`, `DOCS_LLM_TIMEOUT_MS`) override the corresponding `settings.toml` values when set.
@@ -233,12 +237,13 @@ See [`script-format.md`](./script-format.md) for the full specification.
 
 ## Personas
 
-Two SUB/WAVE DJ personas host documentaries:
+Three SUB/WAVE DJ personas host documentaries:
 
 | Persona | ID | Voice | Style |
 |---|---|---|---|
 | **Cara** | `p_cara` | "Amelia" (speed 1.1) | Bubbly British it-girl; witty, gossipy, ironic pop-party host. Best for pop/celebrity-adjacent records. |
 | **Jools** | `p_jools` | "Alyx" (speed 1.0) | British music obsessive; earnest, grounded, liner-note-obsessed sherpa. Best for album deep-dives where craft and context matter. |
+| **Hannah** | `p_hannah` | "Charlotte" (speed 1.0) | Australian expat in London; warm, unpretentious, place-led. Her hook is *emotional geography* — where a record belongs. Best for albums where place is the story. |
 
 ## Episode Catalog
 

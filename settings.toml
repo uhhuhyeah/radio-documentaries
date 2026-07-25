@@ -76,3 +76,7 @@ speed = 1.1
 [voices.p_jools]
 voice_id = "1BUhH8aaMvGMUdGAmWVM"  # "Alyx"
 speed = 1.0
+
+[voices.p_hannah]
+voice_id = "cvpTJfe9LINpHIOmB2Hp"  # "Charlotte - Warm & Conversational"
+speed = 1.0                        # matches her subwave-config tts.speed

@@ -38,7 +38,7 @@ export interface WriterInput {
   album: string;
   artist: string;
   host: string; // persona id, e.g. p_jools
-  hostName: string; // Cara | Jools
+  hostName: string; // Cara | Jools | Hannah
   season: number;
   episode: number;
   model?: string; // ElevenLabs model for the front matter

@@ -74,6 +74,7 @@ const DEFAULTS: Config = {
   voices: {
     p_cara: { voiceId: "ZF6FPAbjXT4488VcRRnw", speed: 1.1 },
     p_jools: { voiceId: "1BUhH8aaMvGMUdGAmWVM", speed: 1.0 },
+    p_hannah: { voiceId: "cvpTJfe9LINpHIOmB2Hp", speed: 1.0 },
   },
   // Per-episode credit ceiling for the render hard-stop. ~9k credits/episode observed;
   // 15000 leaves headroom without allowing a runaway. Live-balance check guards the key

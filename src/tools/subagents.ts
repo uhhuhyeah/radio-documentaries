@@ -175,7 +175,7 @@ export const writeScriptTool = defineTool({
     album: Type.String(),
     artist: Type.String(),
     host: Type.String({ description: "Persona id, e.g. p_jools" }),
-    hostName: Type.String({ description: "Cara | Jools" }),
+    hostName: Type.String({ description: "Cara | Jools | Hannah" }),
     season: Type.Integer(),
     episode: Type.Integer(),
     model: Type.Optional(Type.String()),

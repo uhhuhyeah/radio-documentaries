@@ -409,7 +409,7 @@ Flow for a trigger like "Making of <album> by <artist>, <host> to host":
 11. catalog_set_status(..., "published") only after all publish artifacts succeed.
 
 RULES: Never revise for runtime. Never revise for UNSUPPORTED findings. Never rotate the
-Navidrome password. Hosts are only Cara or Jools. Stop and report — do not guess.
+Navidrome password. Hosts are only Cara, Jools or Hannah. Stop and report — do not guess.
 ```
 
 This is a **deterministic workflow encoded as a prompt** — the steps are enumerated in order, the success criteria are explicit, and the rules cover both what to do and what *not* to do. The "never revise for X" rules are as important as the numbered steps: they prevent the model from looping on non-deterministic checks or inventing facts to reach a length target.
@@ -821,7 +821,7 @@ src/
 - [ ] What is the numbered step-by-step workflow?
 - [ ] What constitutes success for each step?
 - [ ] What should the agent do on error? ("stop and report" vs. "retry")
-- [ ] What is explicitly forbidden? ("never invent facts," "hosts are only Cara or Jools")
+- [ ] What is explicitly forbidden? ("never invent facts," "hosts are only Cara, Jools or Hannah")
 - [ ] What requires approval before proceeding? (credit spend, publishing)
 - [ ] What context needs to be passed between steps?
 

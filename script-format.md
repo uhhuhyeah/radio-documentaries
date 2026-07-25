@@ -35,7 +35,7 @@ season: 1
 episode: 1
 album: "Punisher"
 artist: "Phoebe Bridgers"
-host: p_jools            # persona id from subwave-config (p_jools or p_cara)
+host: p_jools            # persona id from subwave-config (p_jools, p_cara or p_hannah)
 host_name: "Jools"       # display name, must match the persona
 model: eleven_flash_v2_5 # default; may be eleven_multilingual_v2 after the A/B sample gate
 target_minutes: 25       # aim 20–30 total (spoken + songs)
@@ -44,7 +44,7 @@ reference_tracks: 4      # count of SONG slots below (3–5, interleaved like a 
 ```
 
 Rules:
-- `host` must be one of the documentary hosts (`p_jools`, `p_cara`) — see `producer-guide.md` → SUB/WAVE Personas.
+- `host` must be one of the documentary hosts (`p_jools`, `p_cara`, `p_hannah`) — see `producer-guide.md` → SUB/WAVE Personas.
 - `model` stays `eleven_flash_v2_5` unless a per-season A/B comparison has been run and David chose otherwise.
 
 ---

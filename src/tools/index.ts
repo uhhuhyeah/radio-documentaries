@@ -152,7 +152,7 @@ export const catalogAssignTool = defineTool({
   parameters: Type.Object({
     album: Type.String(),
     artist: Type.String(),
-    host: Type.String({ description: "Display name, e.g. Cara or Jools." }),
+    host: Type.String({ description: "Display name: Cara, Jools or Hannah." }),
     season: Type.Optional(Type.Integer()),
   }),
   execute: async (_id, params) => {

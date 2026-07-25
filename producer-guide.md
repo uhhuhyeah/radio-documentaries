@@ -22,7 +22,7 @@ Persona identity, voice, and behaviour are runtime config in the station's `sett
 
 ## SUB/WAVE Personas
 
-The station runs four personas (Cara, Rupert, Jools, Sophie). **The "Making Of" documentaries are hosted by two of them: Cara and Jools.** Each persona's on-air identity is a compact `soul` prompt (≤400 chars) plus tone dials; the Script Writer Agent must write in the assigned host's voice, and the audio is rendered through that host's ElevenLabs voice ID at the specified speed.
+The station runs five personas (Cara, Rupert, Jools, Sophie, Hannah). **The "Making Of" documentaries are hosted by three of them: Cara, Jools and Hannah.** Each persona's on-air identity is a `soul` prompt (cap raised 1000 → **2000 chars** in SUB/WAVE v0.46.0 — Hannah's is written to the new headroom, which is why hers runs longer than Cara's and Jools's) plus tone dials; the Script Writer Agent must write in the assigned host's voice, and the audio is rendered through that host's ElevenLabs voice ID at the specified speed.
 
 Voice-ID note: the values below are the live ElevenLabs voice IDs from `subwave-config`. All persona TTS uses `engine: cloud`, `cloudProvider: elevenlabs`, model **Flash v2.5**. Verify against `subwave-config/config/settings.json` before a production run — voices have been swapped before.
 
@@ -44,7 +44,17 @@ Voice-ID note: the values below are the live ElevenLabs voice IDs from `subwave-
 - **Best fit for documentaries on:** the marquee "Making Of" format — album deep-dives where craft, context and liner-note detail carry the show. His grounded, never-invent-facts ethos is a natural match for this repo's hard rule that the Script Writer works only from the Researcher's notes.
 - **Important:** Jools's defining trait is that he *does not make things up*. The pipeline's separation (writer uses only researched facts) exists to protect exactly this — respect it when scripting him.
 
-*(Rupert — velvety Classic FM presenter — and Sophie — warm Glaswegian storyteller — round out the station roster but are not documentary hosts for now. Full bios in the vault note `SUBWAVE AI Radio` → Personas.)*
+### Hannah — the place-led host
+
+- **ElevenLabs voice ID:** `cvpTJfe9LINpHIOmB2Hp` (ElevenLabs voice "Charlotte - Warm & Conversational") · **speed 1.0** · engine `cloud`/`elevenlabs`
+- **Tagline:** *"Melbourne to London the long way round. Warm company through the day."*
+- **Tone dials** (0–10): humour **7**, localColour **8**, warmth **8** — warm, place-led, the highest localColour on the roster.
+- **Soul:** Charming Australian daytime presenter; grew up in Melbourne and has made London home over eight years - long enough to belong, not quite long enough to stop noticing. She loves her adopted city and complains about it like a local: the drizzle, the transport, the way everyone apologises to furniture. Underneath is a warm homesickness for a place she chose to leave, worn lightly and played for comedy, never for sympathy. Sunny, quick, unpretentious - the warmth of someone raised where the coffee is serious and the self-importance isn't. Her hook is emotional geography: where a song belongs, what weather it wants, which city it would live in, whether it's a tram record or a night-bus one. Two cities in her ear at once, and she's in on the joke of it. Treats the listener like a mate she's walking home with, not an audience. Never gushes, never oversells - if a record is only fine she'll say so kindly and play it anyway. Grounded: she'll tell you one true thing about a track or nothing at all, and never invents a fact to make a better story.
+- **Origin/flavour:** hired to the station 2026-07-23 to take over Sophie's daytime slots; added to the documentary roster 2026-07-24. She also hosts the on-air feature show **The Liner Notes**.
+- **Best fit for documentaries on:** records where **place** is the story — a city's scene, a studio's geography, an album made somewhere that shows in the sound, or a record about leaving or arriving somewhere. Her hook is *emotional geography* (where a record belongs) rather than the craft/liner-note angle Jools takes, so she and Jools cover genuinely different ground on the same kind of album.
+- **Important:** like Jools, Hannah **never invents a fact to make a better story** — her soul says so explicitly. Same hard rule applies: the Script Writer works only from the Researcher's notes. Her "never gushes, never oversells" line is also a useful corrective if a draft reads like press copy.
+
+*(Rupert — velvety Classic FM presenter — rounds out the active roster but is not a documentary host for now. Sophie is on extended hiatus and holds no shows. Full bios in the vault note `SUBWAVE AI Radio` → Personas.)*
 
 ## "Making of" documentaries
 
@@ -52,10 +62,10 @@ The first programme we will produce will be a series of "making of" documentarie
 
 **High-level flow**
 
-1. I will provide, in the trigger prompt, a target **album**, **artist** (that exists in Navidrome), and the **host** to present it — e.g. *"Making of Punisher by Phoebe Bridgers, Jools to host."* There is no default host; the host is always named in the prompt (Cara or Jools). I may optionally name a **season** (e.g. "…for season 2"); if I don't, the Active season applies. **I never give the episode number** — the Producer Agent derives it.
+1. I will provide, in the trigger prompt, a target **album**, **artist** (that exists in Navidrome), and the **host** to present it — e.g. *"Making of Punisher by Phoebe Bridgers, Jools to host."* There is no default host; the host is always named in the prompt (Cara, Jools or Hannah). I may optionally name a **season** (e.g. "…for season 2"); if I don't, the Active season applies. **I never give the episode number** — the Producer Agent derives it.
 2. Producer Agent will:
   - **Assign the season/episode number from `seasons.md`** (the catalog): use the trigger's season or the Active season, then claim a matching `planned` row or append the next number (highest Ep + 1). It updates the catalog row to `in-production`. Numbering rules live in `seasons.md`.
-  - **Validate the basics** — confirm the album/artist resolves in Navidrome and the named host is a valid documentary persona (Cara/Jools) — and resolve any discrepancy up front.
+  - **Validate the basics** — confirm the album/artist resolves in Navidrome and the named host is a valid documentary persona (Cara/Jools/Hannah) — and resolve any discrepancy up front.
   - **Create the working directory** `S{season:02}E{ep:02}-<album-slug>` (matching the catalog Dir cell) for the new work.
 3. Producer Agent will task Researcher Agent to scour the internet for details and anecdotes surrounding the making of that specific album and prepare detailed and organised notes to pass back to Producer Agent.
   - Example prompt I have used in the past:
@@ -103,6 +113,7 @@ Response body is raw MP3 bytes → write straight to `sXXeXX_N_label.mp3`. (An o
 | --- | --- | --- |
 | Cara | `ZF6FPAbjXT4488VcRRnw` | 1.1 |
 | Jools | `1BUhH8aaMvGMUdGAmWVM` | 1.0 |
+| Hannah | `cvpTJfe9LINpHIOmB2Hp` | 1.0 |
 
 **Model choice — decided: A/B sample gate before full production.** Candidates: **Flash v2.5** (`eleven_flash_v2_5`), ≈**0.5 credits/char**, the station standard — fast and good; vs. **Multilingual v2** (`eleven_multilingual_v2`), ≈**1 credit/char**, potentially more expressive for long-form narration at ~double the cost. **Before any season goes into full production, the pipeline renders 1–2 sample segments through *both* models** (same voice/text) for David to compare, then he decides whether the quality gain justifies the extra cost. Default to Flash v2.5 unless that comparison says otherwise; record the chosen model per season.
 
@@ -153,7 +164,7 @@ Response body is raw MP3 bytes → write straight to `sXXeXX_N_label.mp3`. (An o
 | --- | --- | --- |
 | 1. Trigger (album/artist/host/season) | **Script** | Structured input. In an automated run it's not a prompt at all — it's the next `planned` row in `seasons.md`. |
 | 2a. Episode numbering | **Script** | Read `seasons.md`, increment, append. |
-| 2b. Validate album/host resolves | **Script** | Subsonic `search3` against Navidrome; host ∈ {Cara, Jools}. Fuzzy-match + flag ambiguity. |
+| 2b. Validate album/host resolves | **Script** | Subsonic `search3` against Navidrome; host ∈ {Cara, Jools, Hannah}. Fuzzy-match + flag ambiguity. |
 | 2c. Create working dir + front matter | **Script** | Templated scaffold. |
 | **3. Research** | **LLM** | Irreducible. Deep web research → `research.html`. |
 | **4. Script writing** | **LLM** | Irreducible. Persona voice, research-only → `script.md`. |

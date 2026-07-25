@@ -62,6 +62,9 @@ radio-documentaries/
 ├── seasons.example.md          # Episode-catalog template — copy to seasons.md
 ├── script-format.md            # Script format specification (the contract)
 ├── producer-guide.md           # Complete production guide & design document
+├── scripts/
+│   ├── deploy.sh               # Pull merged code into the pipeline LXC and restart the MCP service
+│   └── sync-seasons.sh         # Sync live seasons.md to/from the pipeline LXC
 ├── package.json
 ├── tsconfig.json
 ├── LICENSE                     # MIT
@@ -100,6 +103,29 @@ cp .env.example .env
 # ELEVENLABS_API_KEY, OPENROUTER_API_KEY, BRAVE_API_KEY
 cp seasons.example.md seasons.md   # your local episode catalog (git-ignored)
 ```
+
+## Deployment
+
+After merging a PR, update the pipeline LXC and restart the MCP service with:
+
+```bash
+./scripts/deploy.sh
+```
+
+By default this SSHes to `root@100.110.0.9`, runs `git pull --ff-only` in
+`/opt/radio-documentaries` as the `pipeline` user inside CT `108`, restarts
+`subwave-mcp`, and prints the service status.
+
+Useful variants:
+
+```bash
+./scripts/deploy.sh --dry-run
+./scripts/deploy.sh --no-restart
+./scripts/deploy.sh --branch main
+```
+
+All deployment targets can be overridden with environment variables:
+`PROXMOX_HOST`, `CTID`, `OWNER`, `REMOTE_DIR`, `SERVICE`, `SUDO`, and `BRANCH`.
 
 ## Configuration
 

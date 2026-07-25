@@ -111,6 +111,50 @@ describe("spoken source tags", () => {
   });
 });
 
+describe("style cliches", () => {
+  it("warns on AI-ish contrast frames in spoken bodies", () => {
+    const f = qa.qaText(
+      script(INTRO_OK, `${filler} It's not just a drum sound, it's the whole room making a decision.`),
+      RESEARCH,
+    );
+    expect(has(f, "WARN", "negated contrast")).toBe(true);
+  });
+
+  it("warns on sentence-split not-X-it-is-Y frames", () => {
+    const f = qa.qaText(script(INTRO_OK, `${filler} This is not studio gloss. It is pressure you can hear.`), RESEARCH);
+    expect(has(f, "WARN", "negated contrast")).toBe(true);
+  });
+
+  it("warns on generic summary phrases", () => {
+    const f = qa.qaText(script(INTRO_OK, `${filler} At its core, the record is about arrangement choices.`), RESEARCH);
+    expect(has(f, "WARN", "generic threshold")).toBe(true);
+  });
+
+  it("warns on documentary pivots", () => {
+    const f = qa.qaText(
+      script(INTRO_OK, `${filler} To understand the snare sound, you have to understand the room.`),
+      RESEARCH,
+    );
+    expect(has(f, "WARN", "documentary pivot")).toBe(true);
+  });
+
+  it("warns on empty profundity", () => {
+    const f = qa.qaText(script(INTRO_OK, `${filler} There's something about the way the chorus arrives.`), RESEARCH);
+    expect(has(f, "WARN", "empty profundity")).toBe(true);
+  });
+
+  it("warns on canned intimacy and grand binary abstractions", () => {
+    const f = qa.qaText(script(INTRO_OK, `${filler} You can almost hear the chaos and control in the room.`), RESEARCH);
+    expect(has(f, "WARN", "canned intimacy")).toBe(true);
+    expect(has(f, "WARN", "grand binary abstraction")).toBe(true);
+  });
+
+  it("does not warn on ordinary negation", () => {
+    const f = qa.qaText(script(INTRO_OK, `${filler} The notes do not name the console, so Cara leaves it alone.`), RESEARCH);
+    expect(has(f, "WARN", "AI-ish style cliche")).toBe(false);
+  });
+});
+
 describe("length", () => {
   it("does not flag an in-range script", () => {
     const f = qa.qaText(script(INTRO_OK), RESEARCH);

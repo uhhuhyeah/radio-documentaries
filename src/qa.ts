@@ -119,6 +119,20 @@ const QUOTED_SPAN = /["“]([^"“”]+)["”]/g;
 // [Stereogum], [reliable]. Requiring a leading letter skips slot markers like [01].
 const SOURCE_TAG = /\[[A-Za-z][^\]]*\]/g;
 
+// Formulaic frames that read like LLM house style. Keep these as stylistic
+// warnings, not hard blockers: the Producer can ask for a local rewrite.
+const AI_CLICHE_PATTERNS: { name: string; re: RegExp }[] = [
+  {
+    name: "negated contrast",
+    re: /\b(?:it['’]?s|it is|this is|that is|these are|those are|they['’]?re|they are)?\s*not\s+(?:(?:just|merely|only|simply)\s+)?[^.!?\n]{1,140}?(?:,\s*(?:it['’]?s|it is|this is|that is|these are|those are|they['’]?re|they are|but)|[.!?]\s+(?:it['’]?s|it is|this is|that is|these are|those are|they['’]?re|they are)\b)/gi,
+  },
+  { name: "generic threshold", re: /\b(?:at its core|in many ways|more than anything|ultimately)\b/gi },
+  { name: "documentary pivot", re: /\b(?:this is where things get interesting|to understand [^.!?\n]{1,80}, you have to understand|before we get to [^.!?\n]{1,80}, we need to talk about)\b/gi },
+  { name: "empty profundity", re: /\b(?:there['’]?s something about|that['’]?s the thing about|it says everything|what makes it so powerful is)\b/gi },
+  { name: "canned intimacy", re: /\b(?:you can almost hear|it feels like|as if someone|as if the room|like someone left the door open)\b/gi },
+  { name: "grand binary abstraction", re: /\b(?:chaos and control|beauty and brutality|intimacy and scale|fragility and force)\b/gi },
+];
+
 /** Pure quality gate over a parsed script + the research notes (for the lyric bank). */
 export function qaText(scriptText: string, researchText: string): Finding[] {
   const out: Finding[] = [];
@@ -194,7 +208,21 @@ export function qaText(scriptText: string, researchText: string): Finding[] {
     err(`spoken source tag would be voiced: ${tag}`);
   }
 
-  // 5. REFERENCE-TRACK COUNT + SPREAD.
+  // 5. STYLE CLICHES. Flag common AI-ish frames for revision.
+  const styleCliches = new Set<string>();
+  for (const s of spoken) {
+    for (const { name, re } of AI_CLICHE_PATTERNS) {
+      re.lastIndex = 0;
+      for (const m of s.body.matchAll(re)) {
+        styleCliches.add(`${name}: ${m[0].replace(/\s+/g, " ").trim()}`);
+      }
+    }
+  }
+  for (const cliche of styleCliches) {
+    warn(`AI-ish style cliche — rewrite with concrete musical/production detail: ${JSON.stringify(cliche)}`);
+  }
+
+  // 6. REFERENCE-TRACK COUNT + SPREAD.
   const declared = fm.reference_tracks;
   if (typeof declared === "number" && declared !== songs.length) {
     warn(`reference_tracks=${declared} but found ${songs.length} SONG slot(s)`);

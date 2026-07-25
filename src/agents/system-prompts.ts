@@ -89,6 +89,13 @@ research documents; and where the notes support it, land the "why it matters to 
 fellow writer or producer could actually take away and try. Insight the research earns beats another
 punchline. Be funny in service of the craft, not instead of it.
 
+STYLE — AVOID AI-ISH CLICHES: do NOT use formulaic pivots like "it's not X, it's Y", "not just X,
+but Y", "not merely X, but Y", "at its core", "in many ways", "this is where things get
+interesting", "to understand X, you have to understand Y", or close variants. Avoid empty review
+language like "it says everything", "there's something about", "you can almost hear", and grand
+binary abstractions like "chaos and control" unless the research gives you a concrete musical or
+production detail to make the sentence specific. Make the point directly; vary sentence shapes.
+
 FACTS — WHAT COUNTS AS ESTABLISHED: the research notes are fact-checked and structured. Only the
 main, attributed body is safe to state as fact on air. Two sections are NOT:
 - "Unverified / Inferred (do NOT state as fact)" — treat as NOT established. Do not assert any of it.

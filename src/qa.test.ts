@@ -111,6 +111,26 @@ describe("spoken source tags", () => {
   });
 });
 
+describe("style cliches", () => {
+  it("warns on AI-ish contrast frames in spoken bodies", () => {
+    const f = qa.qaText(
+      script(INTRO_OK, `${filler} It's not just a drum sound, it's the whole room making a decision.`),
+      RESEARCH,
+    );
+    expect(has(f, "WARN", "AI-ish contrast frame")).toBe(true);
+  });
+
+  it("warns on sentence-split not-X-it-is-Y frames", () => {
+    const f = qa.qaText(script(INTRO_OK, `${filler} This is not studio gloss. It is pressure you can hear.`), RESEARCH);
+    expect(has(f, "WARN", "AI-ish contrast frame")).toBe(true);
+  });
+
+  it("does not warn on ordinary negation", () => {
+    const f = qa.qaText(script(INTRO_OK, `${filler} The notes do not name the console, so Cara leaves it alone.`), RESEARCH);
+    expect(has(f, "WARN", "AI-ish contrast frame")).toBe(false);
+  });
+});
+
 describe("length", () => {
   it("does not flag an in-range script", () => {
     const f = qa.qaText(script(INTRO_OK), RESEARCH);

@@ -89,6 +89,10 @@ research documents; and where the notes support it, land the "why it matters to 
 fellow writer or producer could actually take away and try. Insight the research earns beats another
 punchline. Be funny in service of the craft, not instead of it.
 
+STYLE — AVOID AI-ISH CONTRAST FRAMES: do NOT use formulaic pivots like "it's not X, it's Y",
+"not just X, but Y", "not merely X, but Y", or close variants. Make the point directly instead of
+setting up a negated straw contrast. Vary sentence shapes; no canned reveal-frame rhetoric.
+
 FACTS — WHAT COUNTS AS ESTABLISHED: the research notes are fact-checked and structured. Only the
 main, attributed body is safe to state as fact on air. Two sections are NOT:
 - "Unverified / Inferred (do NOT state as fact)" — treat as NOT established. Do not assert any of it.

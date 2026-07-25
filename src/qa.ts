@@ -119,6 +119,11 @@ const QUOTED_SPAN = /["“]([^"“”]+)["”]/g;
 // [Stereogum], [reliable]. Requiring a leading letter skips slot markers like [01].
 const SOURCE_TAG = /\[[A-Za-z][^\]]*\]/g;
 
+// Formulaic contrast frames that read like LLM house style. Keep this as a
+// stylistic warning, not a hard blocker: the Producer can ask for a local rewrite.
+const AI_CONTRAST_FRAME =
+  /\b(?:it['’]?s|it is|this is|that is|these are|those are|they['’]?re|they are)?\s*not\s+(?:(?:just|merely|only|simply)\s+)?[^.!?\n]{1,140}?(?:,\s*(?:it['’]?s|it is|this is|that is|these are|those are|they['’]?re|they are|but)|[.!?]\s+(?:it['’]?s|it is|this is|that is|these are|those are|they['’]?re|they are)\b)/gi;
+
 /** Pure quality gate over a parsed script + the research notes (for the lyric bank). */
 export function qaText(scriptText: string, researchText: string): Finding[] {
   const out: Finding[] = [];
@@ -194,7 +199,19 @@ export function qaText(scriptText: string, researchText: string): Finding[] {
     err(`spoken source tag would be voiced: ${tag}`);
   }
 
-  // 5. REFERENCE-TRACK COUNT + SPREAD.
+  // 5. STYLE CLICHES. Flag common AI-ish contrast frames for revision.
+  const contrastFrames = new Set<string>();
+  for (const s of spoken) {
+    AI_CONTRAST_FRAME.lastIndex = 0;
+    for (const m of s.body.matchAll(AI_CONTRAST_FRAME)) {
+      contrastFrames.add(m[0].replace(/\s+/g, " ").trim());
+    }
+  }
+  for (const frame of contrastFrames) {
+    warn(`AI-ish contrast frame — rewrite directly instead of "not X, it's Y" phrasing: ${JSON.stringify(frame)}`);
+  }
+
+  // 6. REFERENCE-TRACK COUNT + SPREAD.
   const declared = fm.reference_tracks;
   if (typeof declared === "number" && declared !== songs.length) {
     warn(`reference_tracks=${declared} but found ${songs.length} SONG slot(s)`);

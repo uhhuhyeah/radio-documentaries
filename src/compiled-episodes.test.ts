@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   chaptersFromSources,
+  concatFilterGraph,
   concatManifestLine,
   ffmpegMetadataArgs,
   ffmetadataText,
@@ -102,6 +103,11 @@ describe("compiled episode helpers", () => {
 
   it("escapes concat manifest single quotes", () => {
     expect(concatManifestLine("/music/It's Complicated.flac")).toBe("file '/music/It'\\''s Complicated.flac'");
+  });
+
+  it("builds a concat filter graph so mixed input codecs decode independently", () => {
+    expect(concatFilterGraph(3)).toBe("[0:a:0][1:a:0][2:a:0]concat=n=3:v=0:a=1[a]");
+    expect(() => concatFilterGraph(0)).toThrow(/at least one source/);
   });
 
   it("builds cumulative millisecond chapters", () => {

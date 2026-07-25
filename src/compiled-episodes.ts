@@ -53,7 +53,16 @@ export interface CompilePlaylistResult {
   trackNumber?: number;
   navidromeAlbumId?: string;
   navidromeSongId?: string;
+  sourceManifest: SourceManifestItem[];
   warnings: string[];
+}
+
+export interface SourceManifestItem {
+  playlistIndex: number;
+  songId?: string;
+  title: string;
+  path: string;
+  durationSec?: number;
 }
 
 export interface CompileEpisodeTrackOptions {
@@ -85,6 +94,7 @@ export interface PublishCompiledSeasonPlaylistResult {
 
 interface SourceItem {
   id?: string;
+  playlistIndex: number;
   title: string;
   path: string;
   durationSec?: number;
@@ -152,6 +162,11 @@ export function outputPathForTrack(
 
 export function concatManifestLine(path: string): string {
   return `file '${path.replace(/'/g, "'\\''")}'`;
+}
+
+export function concatFilterGraph(sourceCount: number): string {
+  if (sourceCount <= 0) throw new Error("concat filter needs at least one source");
+  return `${Array.from({ length: sourceCount }, (_v, i) => `[${i}:a:0]`).join("")}concat=n=${sourceCount}:v=0:a=1[a]`;
 }
 
 export function ffmetadataText(
@@ -283,6 +298,7 @@ async function resolvePlaylistSourcesForEpisode(
     const resolvedPath = resolveExistingSourcePath(mapped, opts.season, opts.episode, i + 1);
     sources.push({
       id,
+      playlistIndex: i + 1,
       title: String(entry?.title ?? entry?.name ?? resolvedPath),
       path: resolvedPath,
       durationSec: entry?.duration === undefined ? undefined : Number(entry.duration),
@@ -425,7 +441,16 @@ function compileSources(
     writeFileSync(manifestPath, `${sources.map((s) => concatManifestLine(s.path)).join("\n")}\n`, "utf-8");
 
     const codecArgs = outputFormat === "m4a" ? ["-c:a", "aac", "-b:a", bitrate] : ["-c:a", "libmp3lame", "-b:a", bitrate];
-    runFfmpeg(["-f", "concat", "-safe", "0", "-i", manifestPath, "-vn", ...codecArgs, tempAudio]);
+    runFfmpeg([
+      ...sources.flatMap((s) => ["-i", s.path]),
+      "-filter_complex",
+      concatFilterGraph(sources.length),
+      "-map",
+      "[a]",
+      "-vn",
+      ...codecArgs,
+      tempAudio,
+    ]);
 
     const chapters = includeChapters ? chaptersFromSources(durations) : [];
     const taggedMetadata = { ...metadata, genre: DEFAULT_GENRE, comment: DEFAULT_COMMENT };
@@ -528,8 +553,19 @@ export async function compilePlaylistToTrack(opts: CompilePlaylistOptions): Prom
     trackNumber,
     navidromeAlbumId,
     navidromeSongId,
+    sourceManifest: sourceManifest(sources),
     warnings,
   };
+}
+
+function sourceManifest(sources: SourceItem[]): SourceManifestItem[] {
+  return sources.map((s) => ({
+    playlistIndex: s.playlistIndex,
+    songId: s.id,
+    title: s.title,
+    path: s.path,
+    durationSec: s.durationSec,
+  }));
 }
 
 export async function compileEpisodeTrack(opts: CompileEpisodeTrackOptions): Promise<CompilePlaylistResult> {

@@ -64,6 +64,7 @@ radio-documentaries/
 ├── producer-guide.md           # Complete production guide & design document
 ├── scripts/
 │   ├── deploy.sh               # Pull merged code into the pipeline LXC and restart the MCP service
+│   ├── fetch-script.sh         # Pull an episode's script.md (or research/rundown) off the LXC
 │   └── sync-seasons.sh         # Sync live seasons.md to/from the pipeline LXC
 ├── package.json
 ├── tsconfig.json
@@ -126,6 +127,23 @@ Useful variants:
 
 All deployment targets can be overridden with environment variables:
 `PROXMOX_HOST`, `CTID`, `OWNER`, `REMOTE_DIR`, `SERVICE`, `SUDO`, and `BRANCH`.
+
+## Retrieving episode artifacts
+
+Episode working directories live only on the pipeline LXC (git-ignored, never
+pushed). To pull a script — or research notes, or the rundown — back to this
+machine:
+
+```bash
+./scripts/fetch-script.sh --list                        # what's on the LXC
+./scripts/fetch-script.sh S01E03-weathervanes           # → ./S01E03-weathervanes-script.md
+./scripts/fetch-script.sh S01E03-weathervanes --to ~/Downloads
+./scripts/fetch-script.sh S01E04-melodrama --file research.md
+```
+
+The file lands as `<episode>-<file>` so episodes don't clobber each other, and
+those names are git-ignored. Existing files aren't overwritten without
+`--force`. Same environment overrides as `deploy.sh` (minus `SERVICE`/`BRANCH`).
 
 ## Configuration
 

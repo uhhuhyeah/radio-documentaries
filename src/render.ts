@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 
 import NodeID3 from "node-id3";
 
+import { roundSec, tryProbeDurationSec } from "./audio-duration";
 import { config } from "./config";
 import { assertCreditGuard } from "./credit";
 import { apiKeyFromEnv, ElevenLabsError, synthesize, ttsBody } from "./elevenlabs";
@@ -81,7 +82,21 @@ export interface CueEntry {
   kind: sm.SlotKind;
   label: string;
   file?: string; // SPOKEN
+  /** Measured length of `file`, in seconds. SPOKEN only, absent if unmeasurable. */
+  durationSec?: number;
   song?: { title: string; artist?: string; album?: string }; // SONG
+}
+
+/**
+ * Narration totals for the cue sheet. SONG slots are album tracks we don't own
+ * and never render, so these numbers are the *spoken* running time — the length
+ * of the script as performed, without the music.
+ */
+export interface CueTotals {
+  spokenSegments: number;
+  spokenSec: number;
+  /** False when at least one segment's length couldn't be measured. */
+  complete: boolean;
 }
 
 export interface RenderStep {
@@ -137,6 +152,36 @@ export function planEpisode(ep: sm.Episode): Plan {
     cue.push({ index: slot.index, kind: "SPOKEN", label: slot.label, file: filename });
   }
   return { season, episode, steps, cue };
+}
+
+/**
+ * Attach measured durations to a cue sheet's SPOKEN entries.
+ *
+ * Runs over the WHOLE plan's cue, not just the segments this run rendered — a
+ * resumed render reuses files a previous run wrote, and those need lengths too.
+ * `probe` is injected so this stays testable without ffprobe or real audio.
+ */
+export function withDurations(
+  cue: CueEntry[],
+  audioDir: string,
+  probe: (path: string) => number | undefined = tryProbeDurationSec,
+): CueEntry[] {
+  return cue.map((entry) => {
+    if (entry.kind !== "SPOKEN" || !entry.file) return entry;
+    const seconds = probe(join(audioDir, entry.file));
+    return seconds === undefined ? entry : { ...entry, durationSec: roundSec(seconds) };
+  });
+}
+
+/** Sum the spoken segments. Album tracks are excluded by construction. */
+export function cueTotals(cue: CueEntry[]): CueTotals {
+  const spoken = cue.filter((c) => c.kind === "SPOKEN");
+  const measured = spoken.filter((c) => typeof c.durationSec === "number");
+  return {
+    spokenSegments: spoken.length,
+    spokenSec: roundSec(measured.reduce((sum, c) => sum + (c.durationSec ?? 0), 0)),
+    complete: measured.length === spoken.length,
+  };
 }
 
 /**
@@ -269,6 +314,8 @@ export interface RenderResult {
   cuePath: string;
   rendered: number;
   cue: CueEntry[];
+  /** Spoken running time of the finished episode (album tracks excluded). */
+  totals: CueTotals;
   /** Orphaned segment files removed to reconcile the dir against the plan (full renders only). */
   removed: string[];
   /** In-plan segments kept from a prior partial render and NOT re-rendered (resume). */
@@ -380,14 +427,23 @@ export async function renderEpisode(scriptPath: string, opts: RenderOptions = {}
 
   // For a sample, the cue covers only the slots up to the last rendered segment.
   const lastIdx = steps.length ? steps[steps.length - 1]!.index : 0;
-  const cue = opts.maxSpoken ? plan.cue.filter((c) => c.index <= lastIdx) : plan.cue;
+  const planned = opts.maxSpoken ? plan.cue.filter((c) => c.index <= lastIdx) : plan.cue;
+
+  // Measure the finished audio. Done here rather than in the render loop so a
+  // resumed run also times the segments it skipped re-rendering.
+  const cue = withDurations(planned, audioDir);
+  const totals = cueTotals(cue);
 
   const cueName = opts.maxSpoken ? "rundown.sample.json" : "rundown.json";
   const cuePath = join(dirname(scriptPath), cueName);
   writeFileSync(
     cuePath,
-    JSON.stringify({ season: plan.season, episode: plan.episode, album: albumTag, audioDir, cue }, null, 2),
+    JSON.stringify(
+      { season: plan.season, episode: plan.episode, album: albumTag, audioDir, totals, cue },
+      null,
+      2,
+    ),
   );
 
-  return { audioDir, cuePath, rendered, cue, removed, skipped };
+  return { audioDir, cuePath, rendered, cue, totals, removed, skipped };
 }

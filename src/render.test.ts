@@ -1,12 +1,13 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ttsBody, ttsUrl, voiceSettings } from "./elevenlabs";
 import {
+  cueTotals,
   manifestForPlan,
   MIN_SEGMENT_BYTES,
   planEpisode,
@@ -14,6 +15,7 @@ import {
   sanitizeForTts,
   segmentTextHash,
   segmentsToRender,
+  withDurations,
 } from "./render";
 import * as sm from "./scriptmodel";
 
@@ -269,5 +271,68 @@ describe("elevenlabs request shaping", () => {
 
   it("omits an empty previous_request_ids array", () => {
     expect(ttsBody("hi", "m", 1.0, { previousRequestIds: [] }).previous_request_ids).toBeUndefined();
+  });
+});
+
+describe("withDurations", () => {
+  const cue = planEpisode(clean()).cue;
+  const stub = (seconds: Record<string, number>) => (path: string) => seconds[basename(path)];
+
+  it("times spoken segments and leaves song slots alone", () => {
+    const probed = withDurations(cue, "/audio", () => 12.345);
+    const spoken = probed.filter((c) => c.kind === "SPOKEN");
+    const songs = probed.filter((c) => c.kind === "SONG");
+
+    expect(spoken.length).toBeGreaterThan(0);
+    expect(spoken.every((c) => c.durationSec === 12.35)).toBe(true); // rounded to centiseconds
+    expect(songs.every((c) => c.durationSec === undefined)).toBe(true);
+  });
+
+  it("probes the segment's own file inside the audio dir", () => {
+    const seen: string[] = [];
+    withDurations(cue, "/some/audio", (path) => {
+      seen.push(path);
+      return 1;
+    });
+    const files = cue.filter((c) => c.kind === "SPOKEN").map((c) => join("/some/audio", c.file!));
+    expect(seen).toEqual(files);
+  });
+
+  it("omits the field when a segment can't be measured, rather than guessing", () => {
+    const first = cue.find((c) => c.kind === "SPOKEN")!;
+    const probed = withDurations(cue, "/audio", stub({ [first.file!]: 30 }));
+
+    expect(probed.find((c) => c.index === first.index)!.durationSec).toBe(30);
+    const others = probed.filter((c) => c.kind === "SPOKEN" && c.index !== first.index);
+    expect(others.every((c) => c.durationSec === undefined)).toBe(true);
+  });
+});
+
+describe("cueTotals", () => {
+  const cue = planEpisode(clean()).cue;
+
+  it("sums only the spoken segments — album tracks are not ours to count", () => {
+    const probed = withDurations(cue, "/audio", () => 60);
+    const totals = cueTotals(probed);
+
+    expect(totals.spokenSegments).toBe(4);
+    expect(totals.spokenSec).toBe(240);
+    expect(totals.complete).toBe(true);
+  });
+
+  it("flags an incomplete measurement instead of silently under-reporting", () => {
+    const first = cue.find((c) => c.kind === "SPOKEN")!;
+    const partial = withDurations(cue, "/audio", (path) =>
+      basename(path) === first.file ? 30 : undefined,
+    );
+    const totals = cueTotals(partial);
+
+    expect(totals.spokenSegments).toBe(4);
+    expect(totals.spokenSec).toBe(30);
+    expect(totals.complete).toBe(false);
+  });
+
+  it("is zero and complete for a cue with no spoken slots", () => {
+    expect(cueTotals([])).toEqual({ spokenSegments: 0, spokenSec: 0, complete: true });
   });
 });

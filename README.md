@@ -226,6 +226,8 @@ pnpm cli navidrome scan
 
 # Publishing
 pnpm cli publish path/to/rundown.json            # Build Navidrome playlist
+# Backfill durationSec/totals into rundowns rendered before durations were measured:
+pnpm tsx scripts/backfill-durations.ts --dry-run path/to/rundown.json
 pnpm cli compile-episode path/to/rundown.json    # Build one long-form compiled track
 pnpm cli compile-playlist --playlist-id <id> --season 1 --episode 1  # Backfill by explicit playlist ID
 pnpm cli publish-compiled-season --season 1      # Playlist of compiled episode tracks
@@ -278,6 +280,29 @@ Key rules:
 - The Writer uses **only** the research notes — no web access, no guessing
 
 See [`script-format.md`](./script-format.md) for the full specification.
+
+## Cue sheet (`rundown.json`)
+
+Rendering writes an ordered cue sheet next to the script. It is what `publish`
+and `compile-episode` consume, and it is the machine-readable record of what the
+episode actually is:
+
+- Each **SPOKEN** entry carries its `file` and a `durationSec` measured off the
+  finished MP3 with ffprobe.
+- Each **SONG** entry is metadata only — album tracks are never rendered, so
+  they have no file and no duration.
+- A `totals` block sums the spoken segments: `spokenSegments`, `spokenSec`, and
+  `complete` (false if any segment's length couldn't be measured, so the sum is
+  a lower bound rather than a silent under-count).
+
+Because songs are excluded by construction, `totals.spokenSec` is the narration
+running time — the length of the script as performed, without the music. Full
+broadcast length additionally needs the album track durations, which
+`compile-episode` resolves from Navidrome.
+
+Durations are measured on every render, including resumed ones (segments kept
+from a previous partial run still get timed). Rundowns written before this
+existed can be upgraded in place with `scripts/backfill-durations.ts`.
 
 ## Personas
 

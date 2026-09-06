@@ -64,6 +64,7 @@ radio-documentaries/
 ├── producer-guide.md           # Complete production guide & design document
 ├── scripts/
 │   ├── deploy.sh               # Pull merged code into the pipeline LXC and restart the MCP service
+│   ├── fetch-audio.sh          # Pull an episode's rendered narration MP3s off the LXC
 │   ├── fetch-script.sh         # Pull an episode's script.md (or research/rundown) off the LXC
 │   └── sync-seasons.sh         # Sync live seasons.md to/from the pipeline LXC
 ├── package.json
@@ -144,6 +145,28 @@ machine:
 The file lands as `<episode>-<file>` so episodes don't clobber each other, and
 those names are git-ignored. Existing files aren't overwritten without
 `--force`. Same environment overrides as `deploy.sh` (minus `SERVICE`/`BRANCH`).
+
+`fetch-script.sh` handles text files only. The rendered narration comes back
+with its companion:
+
+```bash
+./scripts/fetch-audio.sh S01E06-home            # → ./S01E06-home/audio/*.mp3
+./scripts/fetch-audio.sh S01E06-home --site     # also into the site's dev tree
+```
+
+Audio lands in `<episode>/audio/` — the layout `push-audio.sh` in
+**radio-documentaries-site** reads — so publishing an episode to R2 is two
+commands:
+
+```bash
+./scripts/fetch-audio.sh S01E06-home --site
+(cd ~/code/homelab/radio-documentaries-site && ./push-audio.sh S01E06-home)
+```
+
+Only `*.mp3` is copied; sidecars like `render-manifest.json` stay on the LXC.
+Files are staged in a temp dir and installed only once the whole transfer
+arrives, so an interrupted pull leaves the destination untouched. Re-running
+overwrites, which is how you pick up a re-render.
 
 ## Configuration
 

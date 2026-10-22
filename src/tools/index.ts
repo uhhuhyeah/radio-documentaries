@@ -136,7 +136,7 @@ export const catalogListTool = defineTool({
     const text = catalog.read();
     const season = params.season ?? catalog.activeSeason(text);
     const rows = catalog.rowsForSeason(text, season);
-    return result(`Season ${season}: ${rows.length} episode(s).`, { season, rows });
+    return result(catalog.describeRows(season, rows), { season, rows });
   },
 });
 

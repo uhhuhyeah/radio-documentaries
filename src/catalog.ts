@@ -209,6 +209,21 @@ export function nextPlanned(text: string, season: number): Row | null {
   return rowsForSeason(text, season).find((r) => r.status.toLowerCase() === "planned") ?? null;
 }
 
+/**
+ * A season's rows as plain text, one line per episode, IDs included. MCP clients
+ * such as Hermes read only the text content and drop structuredContent, so a
+ * bare count left them unable to find a just-published episode's playlistId for
+ * compile_playlist_to_track.
+ */
+export function describeRows(season: number, rows: Row[]): string {
+  const lines = rows.map((r) =>
+    `E${r.ep === null ? "??" : pad2(r.ep)} — ${r.album} by ${r.artist} (host ${r.host}) · ${r.status}` +
+    ` · published ${r.published || EMPTY} · playlistId ${r.playlistId || EMPTY}` +
+    ` · compiledSongId ${r.compiledSongId || EMPTY}`,
+  );
+  return [`Season ${season}: ${rows.length} episode(s).`, ...lines].join("\n");
+}
+
 function formatRow(ep: number, album: string, artist: string, host: string,
                    status: string, dir: string, published: string,
                    playlistId = EMPTY, playlistUrl = EMPTY, compiledSongId = EMPTY): string {

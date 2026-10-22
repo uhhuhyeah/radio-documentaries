@@ -209,6 +209,25 @@ describe("playlist metadata", () => {
   });
 });
 
+describe("describeRows", () => {
+  it("puts each row's playlist and compiled song IDs in the text", () => {
+    const p = tmpCatalog();
+    catalog.setEpisodePlaylist(2, 1, "pl-123", "url", p);
+    catalog.setEpisodeCompiledSong(2, 1, "song-456", p);
+    const text = catalog.describeRows(2, catalog.rowsForSeason(catalog.read(p), 2));
+    expect(text).toContain("Season 2:");
+    expect(text).toContain("E01 — Real One by Someone (host Jools) · published");
+    expect(text).toContain("playlistId pl-123");
+    expect(text).toContain("compiledSongId song-456");
+  });
+
+  it("shows a dash for IDs not yet recorded", () => {
+    const p = tmpCatalog();
+    const text = catalog.describeRows(2, catalog.rowsForSeason(catalog.read(p), 2));
+    expect(text).toContain("playlistId — · compiledSongId —");
+  });
+});
+
 describe("prose + fence preservation", () => {
   it("mutation leaves prose and the fenced example intact", () => {
     const p = tmpCatalog();

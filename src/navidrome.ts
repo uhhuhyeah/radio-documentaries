@@ -220,6 +220,16 @@ export class Subsonic {
     return (await this.request("createPlaylist", { name, songId: songIds })).playlist ?? {};
   }
 
+  /**
+   * Replace an existing playlist's tracks, keeping its ID. Navidrome's
+   * createPlaylist with a playlistId clears and re-adds tracks on that same
+   * playlist (core/playlists Create), so anything pinned to the ID — a SUB/WAVE
+   * show anchor — survives.
+   */
+  async replacePlaylistTracks(id: string, songIds: string[]): Promise<any> {
+    return (await this.request("createPlaylist", { playlistId: id, songId: songIds })).playlist ?? {};
+  }
+
   async deletePlaylist(id: string): Promise<void> {
     await this.request("deletePlaylist", { id });
   }

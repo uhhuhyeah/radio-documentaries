@@ -14,7 +14,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize, relative, reso
 import { tmpdir } from "node:os";
 
 import { config } from "./config";
-import { read as readCatalog, rowsForSeason, setEpisodeCompiledSong, setSeasonPlaylist } from "./catalog";
+import { read as readCatalog, rowsForSeason, seasonPlaylistInfo, setEpisodeCompiledSong, setSeasonPlaylist } from "./catalog";
 import { asList, clientFromEnv, playlistUrlFromEnv, songsOfAlbum, waitForScan, type Song, type Subsonic } from "./navidrome";
 
 const DEFAULT_COMMENT = "Compiled from SUB/WAVE making-of episode playlist";
@@ -234,6 +234,32 @@ export function ffmpegMetadataArgs(metadata: {
 
 function escapeFfmetadata(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[=;#]/g, (m) => `\\${m}`);
+}
+
+/**
+ * How far a compiled track may drift from the summed source durations. The sum
+ * uses Navidrome's whole-second (truncated) durations, so each source can count
+ * up to ~1s short; 0.5% alone rejected S01E08 (18 sources, 2151.16s vs 2140s).
+ */
+export function compiledDurationTolerance(expectedSec: number, sourceCount: number): number {
+  return Math.max(2, expectedSec * 0.005, sourceCount);
+}
+
+/**
+ * Which existing playlist a season republish should update in place. Prefers
+ * the ID the catalog recorded for the season, then the first playlist with the
+ * season's name. Any other same-named playlists are duplicates to delete, so a
+ * name lookup stays unambiguous. `keepId` undefined means create a new one.
+ */
+export function seasonPlaylistPlan(
+  playlists: { id?: unknown; name?: unknown }[],
+  name: string,
+  recordedId?: string,
+): { keepId?: string; deleteIds: string[] } {
+  const named = playlists.filter((p) => p?.name === name && p?.id).map((p) => String(p.id));
+  const all = playlists.filter((p) => p?.id).map((p) => String(p.id));
+  const keepId = recordedId && all.includes(recordedId) ? recordedId : named[0];
+  return { keepId, deleteIds: named.filter((id) => id !== keepId) };
 }
 
 export function chaptersFromSources(sources: { title: string; durationSec: number }[]): Chapter[] {
@@ -478,7 +504,7 @@ function compileSources(
     runFfmpeg(muxArgs(outputFormat, tempAudio, metadataPath, taggedMetadata, tempFinal, coverPath));
 
     const actualDuration = ffprobeDuration(tempFinal);
-    const tolerance = Math.max(2, expectedDuration * 0.005);
+    const tolerance = compiledDurationTolerance(expectedDuration, sources.length);
     if (Math.abs(actualDuration - expectedDuration) > tolerance) {
       throw new Error(
         `compiled duration ${actualDuration.toFixed(2)}s differs from expected ${expectedDuration.toFixed(2)}s by more than ${tolerance.toFixed(2)}s`,
@@ -702,11 +728,14 @@ export async function publishCompiledSeasonPlaylist(
   const client = clientFromEnv();
   const songIds = rows.map((r) => r.compiledSongId);
   const name = opts.name ?? `SUB/WAVE Docs · Season ${pad2(opts.season)} — Making Of Episodes`;
-  for (const p of await client.getPlaylists()) {
-    if (p?.name === name && p?.id) await client.deletePlaylist(String(p.id));
-  }
-  const playlist = await client.createPlaylist(name, songIds);
-  const playlistId = String(playlist.id);
+  // Update in place rather than delete-and-recreate: a new ID silently broke the
+  // SUB/WAVE show anchored to this playlist (The Making Of) on every republish.
+  const plan = seasonPlaylistPlan(await client.getPlaylists(), name, seasonPlaylistInfo(text, opts.season)?.playlistId);
+  for (const id of plan.deleteIds) await client.deletePlaylist(id);
+  const playlist = plan.keepId
+    ? await client.replacePlaylistTracks(plan.keepId, songIds)
+    : await client.createPlaylist(name, songIds);
+  const playlistId = String(playlist.id ?? plan.keepId);
   const playlistUrl = playlistUrlFromEnv(playlistId);
   setSeasonPlaylist(opts.season, playlistId, playlistUrl);
 

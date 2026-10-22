@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   chaptersFromSources,
+  compiledDurationTolerance,
   concatFilterGraph,
   concatManifestLine,
   coverArtSourcePath,
@@ -13,6 +14,7 @@ import {
   matchSiblingSourceFilename,
   matchStagedSegmentFilename,
   muxArgs,
+  seasonPlaylistPlan,
   normalizeSourceFilenameForMatch,
   outputPathForTrack,
   sanitizeFilename,
@@ -200,5 +202,40 @@ describe("compiled episode helpers", () => {
     expect(args).toContain("-c:v");
     expect(args).toContain("mjpeg");
     expect(args).toContain("attached_pic");
+  });
+});
+
+describe("compiledDurationTolerance", () => {
+  it("allows about a second per source for Navidrome's truncated durations", () => {
+    // S01E08: 18 sources summed to 2140s, compiled to 2151.16s; 0.5% (10.7s) rejected it.
+    const tol = compiledDurationTolerance(2140, 18);
+    expect(Math.abs(2151.16 - 2140)).toBeLessThanOrEqual(tol);
+  });
+
+  it("keeps the 2s floor and the 0.5% rule when they are larger", () => {
+    expect(compiledDurationTolerance(100, 1)).toBe(2);
+    expect(compiledDurationTolerance(10_000, 3)).toBe(50);
+  });
+});
+
+describe("seasonPlaylistPlan", () => {
+  const NAME = "SUB/WAVE Docs · Season 01 — Making Of Episodes";
+
+  it("updates the recorded season playlist in place", () => {
+    const plan = seasonPlaylistPlan([{ id: "other", name: "x" }, { id: "s1", name: NAME }], NAME, "s1");
+    expect(plan).toEqual({ keepId: "s1", deleteIds: [] });
+  });
+
+  it("falls back to the playlist with the season's name when no ID is recorded", () => {
+    expect(seasonPlaylistPlan([{ id: "s1", name: NAME }], NAME, "—")).toEqual({ keepId: "s1", deleteIds: [] });
+  });
+
+  it("keeps the recorded playlist even if it was renamed, and deletes same-named duplicates", () => {
+    const plan = seasonPlaylistPlan([{ id: "dup", name: NAME }, { id: "s1", name: "renamed" }], NAME, "s1");
+    expect(plan).toEqual({ keepId: "s1", deleteIds: ["dup"] });
+  });
+
+  it("creates a new playlist when none exists", () => {
+    expect(seasonPlaylistPlan([{ id: "other", name: "x" }], NAME)).toEqual({ keepId: undefined, deleteIds: [] });
   });
 });

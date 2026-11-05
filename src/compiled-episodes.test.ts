@@ -5,6 +5,7 @@ import {
   compiledDurationTolerance,
   concatFilterGraph,
   concatManifestLine,
+  describePublishedSeasonPlaylist,
   coverArtSourcePath,
   ffmpegMetadataArgs,
   ffmetadataText,
@@ -237,5 +238,20 @@ describe("seasonPlaylistPlan", () => {
 
   it("creates a new playlist when none exists", () => {
     expect(seasonPlaylistPlan([{ id: "other", name: "x" }], NAME)).toEqual({ keepId: undefined, deleteIds: [] });
+  });
+});
+
+describe("describePublishedSeasonPlaylist", () => {
+  it("puts the playlist ID and URL in the text", () => {
+    const text = describePublishedSeasonPlaylist({
+      playlistName: "Season 01", trackCount: 10, playlistId: "s1", playlistUrl: "http://nd/playlist/s1/show",
+    });
+    expect(text).toContain('"Season 01" with 10 track(s)');
+    expect(text).toContain("playlistId s1 · playlistUrl http://nd/playlist/s1/show");
+  });
+
+  it("shows a dash when there is no URL", () => {
+    const text = describePublishedSeasonPlaylist({ playlistName: "Season 01", trackCount: 1, playlistId: "s1" });
+    expect(text).toContain("playlistUrl —");
   });
 });

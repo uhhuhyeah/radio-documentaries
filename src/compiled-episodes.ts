@@ -241,6 +241,16 @@ function escapeFfmetadata(value: string): string {
  * uses Navidrome's whole-second (truncated) durations, so each source can count
  * up to ~1s short; 0.5% alone rejected S01E08 (18 sources, 2151.16s vs 2140s).
  */
+/** Tool summary text. The IDs go in the text because MCP clients may read only `content`. */
+export function describePublishedSeasonPlaylist(
+  r: Pick<PublishCompiledSeasonPlaylistResult, "playlistName" | "trackCount" | "playlistId" | "playlistUrl">,
+): string {
+  return (
+    `published compiled season playlist "${r.playlistName}" with ${r.trackCount} track(s)` +
+    ` · playlistId ${r.playlistId} · playlistUrl ${r.playlistUrl || "—"}`
+  );
+}
+
 export function compiledDurationTolerance(expectedSec: number, sourceCount: number): number {
   return Math.max(2, expectedSec * 0.005, sourceCount);
 }

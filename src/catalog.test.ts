@@ -226,6 +226,21 @@ describe("describeRows", () => {
     const text = catalog.describeRows(2, catalog.rowsForSeason(catalog.read(p), 2));
     expect(text).toContain("playlistId — · compiledSongId —");
   });
+
+  it("includes the season playlist ID and URL", () => {
+    const p = tmpCatalog();
+    catalog.setSeasonPlaylist(2, "season-pl-2", "http://nd/playlist/season-pl-2/show", p);
+    const text = catalog.read(p);
+    const out = catalog.describeRows(2, catalog.rowsForSeason(text, 2), catalog.seasonPlaylistInfo(text, 2));
+    expect(out.split("\n")[1]).toBe("Season playlist ID season-pl-2 · URL http://nd/playlist/season-pl-2/show");
+  });
+
+  it("shows dashes when no season playlist is recorded", () => {
+    const p = tmpCatalog();
+    const text = catalog.read(p);
+    const out = catalog.describeRows(2, catalog.rowsForSeason(text, 2), catalog.seasonPlaylistInfo(text, 2));
+    expect(out).toContain("Season playlist ID — · URL —");
+  });
 });
 
 describe("prose + fence preservation", () => {

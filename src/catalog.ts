@@ -215,13 +215,15 @@ export function nextPlanned(text: string, season: number): Row | null {
  * bare count left them unable to find a just-published episode's playlistId for
  * compile_playlist_to_track.
  */
-export function describeRows(season: number, rows: Row[]): string {
+export function describeRows(season: number, rows: Row[], seasonPlaylist: SeasonPlaylistInfo | null = null): string {
   const lines = rows.map((r) =>
     `E${r.ep === null ? "??" : pad2(r.ep)} — ${r.album} by ${r.artist} (host ${r.host}) · ${r.status}` +
     ` · published ${r.published || EMPTY} · playlistId ${r.playlistId || EMPTY}` +
     ` · compiledSongId ${r.compiledSongId || EMPTY}`,
   );
-  return [`Season ${season}: ${rows.length} episode(s).`, ...lines].join("\n");
+  const playlist =
+    `Season playlist ID ${seasonPlaylist?.playlistId || EMPTY} · URL ${seasonPlaylist?.playlistUrl || EMPTY}`;
+  return [`Season ${season}: ${rows.length} episode(s).`, playlist, ...lines].join("\n");
 }
 
 function formatRow(ep: number, album: string, artist: string, host: string,

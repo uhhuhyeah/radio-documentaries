@@ -17,7 +17,12 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 
 import * as budget from "../budget";
 import * as catalog from "../catalog";
-import { compileEpisodeTrack, compilePlaylistToTrack, publishCompiledSeasonPlaylist } from "../compiled-episodes";
+import {
+  compileEpisodeTrack,
+  compilePlaylistToTrack,
+  describePublishedSeasonPlaylist,
+  publishCompiledSeasonPlaylist,
+} from "../compiled-episodes";
 import { config } from "../config";
 import { checkCredit } from "../credit";
 import { apiKeyFromEnv } from "../elevenlabs";
@@ -136,7 +141,7 @@ export const catalogListTool = defineTool({
     const text = catalog.read();
     const season = params.season ?? catalog.activeSeason(text);
     const rows = catalog.rowsForSeason(text, season);
-    return result(catalog.describeRows(season, rows), { season, rows });
+    return result(catalog.describeRows(season, rows, catalog.seasonPlaylistInfo(text, season)), { season, rows });
   },
 });
 
@@ -654,7 +659,7 @@ export const publishCompiledSeasonPlaylistTool = defineTool({
   }),
   execute: async (_id, params) => {
     const r = await publishCompiledSeasonPlaylist(params);
-    return result(`published compiled season playlist "${r.playlistName}" with ${r.trackCount} track(s)`, r);
+    return result(describePublishedSeasonPlaylist(r), r);
   },
 });
 

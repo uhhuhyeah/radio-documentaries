@@ -68,9 +68,14 @@ export const PERSONAS: Record<string, Persona> = {
   },
 };
 
-/** ElevenLabs credit cost per character, per model (approximate; see the guide). */
+/**
+ * ElevenLabs credit cost per character, per model. Flash is measured, not the
+ * published ~0.5: the `character-cost` header says 0.22, and S01E05–E10 render days
+ * came to 0.22–0.30 of each script's spoken chars (2026-11-16). 0.3 covers the worst
+ * of those, staying on the safe side for the credit hard-stop. Multilingual is unmeasured.
+ */
 export const MODEL_CREDIT_RATE: Record<string, number> = {
-  eleven_flash_v2_5: 0.5,
+  eleven_flash_v2_5: 0.3,
   eleven_multilingual_v2: 1.0,
 };
 

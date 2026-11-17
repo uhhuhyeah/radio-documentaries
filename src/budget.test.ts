@@ -34,13 +34,13 @@ describe("estimateText", () => {
   });
 
   it("computes credits per model", () => {
-    expect(e.creditsByModel.eleven_flash_v2_5).toBeCloseTo(TOTAL_CHARS * 0.5);
+    expect(e.creditsByModel.eleven_flash_v2_5).toBeCloseTo(TOTAL_CHARS * 0.3);
     expect(e.creditsByModel.eleven_multilingual_v2).toBeCloseTo(TOTAL_CHARS * 1.0);
   });
 
   it("reports the chosen model's credits", () => {
     expect(e.chosenModel).toBe("eleven_flash_v2_5");
-    expect(e.chosenCredits).toBeCloseTo(TOTAL_CHARS * 0.5);
+    expect(e.chosenCredits).toBeCloseTo(TOTAL_CHARS * 0.3);
   });
 });
 

@@ -16,14 +16,14 @@ timeout_ms = 560000
 
 [elevenlabs]
 # Default TTS model stamped into new scripts' front matter (per-episode front matter wins;
-# `render --model` overrides at render time). eleven_flash_v2_5 ≈0.5 cr/char; eleven_multilingual_v2 ≈1.
+# `render --model` overrides at render time). eleven_flash_v2_5 ≈0.3 cr/char (measured); eleven_multilingual_v2 ≈1.
 model = "eleven_flash_v2_5"
 
 [budget]
 # Credit hard-stop (src/credit.ts): before a render, the estimated credit need is checked
 # against the key's live balance AND this per-episode cap; if the render can't finish or
-# exceeds the cap, it's refused BEFORE any TTS call (no partial episodes). ~9k credits/episode
-# observed; 15000 leaves headroom. Env: DOCS_PER_EPISODE_CAP overrides.
+# exceeds the cap, it's refused BEFORE any TTS call (no partial episodes). ~5k credits/episode
+# estimated (~3.7–4.7k actually charged); 15000 leaves headroom. Env: DOCS_PER_EPISODE_CAP overrides.
 per_episode_cap = 15000
 
 # Where rendered audio is copied onto the NAS Music share, used by `pnpm cli stage-audio`.

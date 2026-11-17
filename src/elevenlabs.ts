@@ -81,7 +81,7 @@ export interface SynthResult {
  * remains a known gap (tighten via [budget] per_episode_cap below the key quota).
  *
  * Units: `character_limit`/`character_count` are the same credit unit budget.ts
- * estimates in (multilingual = 1 credit/char, flash v2.5 ≈ 0.5), so
+ * estimates in (multilingual = 1 credit/char, flash v2.5 ≈ 0.3), so
  * `remaining = limit − used` is directly comparable to an Estimate's credits.
  */
 export interface CreditBalance {

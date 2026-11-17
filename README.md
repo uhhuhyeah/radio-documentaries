@@ -336,7 +336,7 @@ See [`producer-guide.md`](./producer-guide.md#navidrome) for full details.
 
 ## ElevenLabs Budget
 
-A 20–30 minute episode costs approximately **9,000–12,000 credits** at Flash v2.5 rates (~0.5 credits/character), against a 30,000/month shared plan. The budget module estimates and gates this before rendering:
+A 20–30 minute episode costs approximately **4,000–5,000 credits** at Flash v2.5 rates (~0.22 credits/character charged; the estimator uses 0.3 for headroom), against a 121,000/month shared plan. The budget module estimates and gates this before rendering:
 
 ```bash
 pnpm cli budget script.md --cap 15000
